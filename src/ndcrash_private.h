@@ -23,7 +23,7 @@ struct ucontext;
 
 /// Type of pointer to unwinding function.
 /// Parameter is processor state at a moment of crash.
-typedef void (*ndcrash_unwind_func_ptr)(struct ucontext *);
+typedef void (*ndcrash_unwind_func_ptr)(int outfile, struct ucontext *);
 
 /// Forward declaration.
 struct ndcrash_in_context;

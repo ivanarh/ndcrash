@@ -8,10 +8,6 @@
 #define NDCRASH_LOG_BUFFER_SIZE 256
 #endif
 
-#ifndef NDCRASH_LOG_TAG
-#define NDCRASH_LOG_TAG "NDCRASH"
-#endif
-
 void ndcrash_log_write_line(int fd, const char *format, ...) {
     char buffer[NDCRASH_LOG_BUFFER_SIZE];
     va_list args;
@@ -37,7 +33,7 @@ void ndcrash_log_write_line(int fd, const char *format, ...) {
         // Replacing last buffer character with new line.
         buffer[printed] = '\n';
 
-        // Writing to a file.
-        write(fd, buffer, (size_t)printed);
+        // Writing to a file including \n character.
+        write(fd, buffer, (size_t)printed + 1);
     }
 }

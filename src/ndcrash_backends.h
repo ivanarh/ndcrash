@@ -3,8 +3,8 @@
 
 struct ucontext;
 
-void ndcrash_unwind_libcorkscrew(struct ucontext *context);
-void ndcrash_unwind_libunwind(struct ucontext *context);
-void ndcrash_unwind_libunwindstack(struct ucontext *context);
+void ndcrash_in_unwind_libcorkscrew(int outfile, struct ucontext *context);
+void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context);
+void ndcrash_in_unwind_libunwindstack(int outfile, struct ucontext *context);
 
 #endif //NDCRASH_BACKENDS_H

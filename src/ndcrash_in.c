@@ -32,7 +32,7 @@ void ndcrash_in_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoid
     struct ucontext *context = (struct ucontext *)ctxvoid;
     int outfile = 0;
     if (ndcrash_in_context_instance->log_file) {
-        outfile = open(ndcrash_in_context_instance->log_file, O_WRONLY | O_CREAT | O_TRUNC);
+        outfile = ndcrash_dump_create_file(ndcrash_in_context_instance->log_file);
     }
 
     // Dumping header of a crash dump.
@@ -40,7 +40,7 @@ void ndcrash_in_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoid
 
 
     if (ndcrash_in_context_instance->unwind_function) {
-        ndcrash_in_context_instance->unwind_function(context);
+        ndcrash_in_context_instance->unwind_function(outfile, context);
     }
 
     // Final new line of crash dump.
@@ -63,17 +63,17 @@ enum ndcrash_error ndcrash_in_init(const enum ndcrash_backend backend, const cha
     switch (backend) {
 #ifdef ENABLE_LIBCORKSCREW
         case ndcrash_backend_libcorkscrew:
-            ndcrash_in_context_instance->unwind_function = &ndcrash_unwind_libcorkscrew;
+            ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_libcorkscrew;
             break;
 #endif
 #ifdef ENABLE_LIBUNWIND
         case ndcrash_backend_libunwind:
-            ndcrash_in_context_instance->unwind_function = &ndcrash_unwind_libunwind;
+            ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_libunwind;
             break;
 #endif
 #ifdef ENABLE_LIBUNWINDSTACK
         case ndcrash_backend_libunwindstack:
-            ndcrash_in_context_instance->unwind_function = &ndcrash_unwind_libunwindstack;
+            ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_libunwindstack;
             break;
 #endif
     }
