@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.4.1)
 project(ndcrash)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=implicit-function-declaration")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11") #For libunwindstack only.
 
 set(NDCRASH_SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
@@ -33,8 +34,12 @@ endif()
 if (${ENABLE_LIBUNWINDSTACK})
     message(STATUS "Backend enabled: libunwindstack")
     add_definitions(-DENABLE_LIBUNWINDSTACK)
-    file(GLOB NDCRASH_BACKEND_SOURCES ${NDCRASH_SOURCE_ROOT}/backends/libunwindstack/*.c)
+    file(GLOB NDCRASH_BACKEND_SOURCES ${NDCRASH_SOURCE_ROOT}/backends/libunwindstack/*.cpp)
     list(APPEND NDCRASH_SOURCES ${NDCRASH_BACKEND_SOURCES})
+
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/libunwindstack-ndk/include)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/libunwindstack-ndk/cmake)
+    list(APPEND LINK_LIBRARIES unwindstack)
 else()
     message(STATUS "Backend disabled: libunwindstack")
 endif()

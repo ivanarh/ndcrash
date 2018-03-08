@@ -1,3 +1,6 @@
 [submodule "external/libunwind-ndk"]
 	path = external/libunwind-ndk
 	url = git@github.com:ivanarh/libunwind-ndk.git
+[submodule "external/libunwindstack-ndk"]
+	path = external/libunwindstack-ndk
+	url = git@github.com:ivanarh/libunwindstack-ndk.git
