@@ -4,3 +4,6 @@
 [submodule "external/libunwindstack-ndk"]
 	path = external/libunwindstack-ndk
 	url = git@github.com:ivanarh/libunwindstack-ndk.git
+[submodule "external/libcorkscrew-ndk"]
+	path = external/libcorkscrew-ndk
+	url = git@github.com:ivanarh/libcorkscrew-ndk.git
