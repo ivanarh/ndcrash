@@ -1,4 +1,5 @@
 #include "ndcrash_signal_utils.h"
+#include "ndcrash_private.h"
 #include <signal.h>
 
 bool ndcrash_signal_has_si_addr(int si_signo, int si_code) {
@@ -162,3 +163,24 @@ const char *ndcrash_get_sigcode(int signo, int code) {
     return "?";
 }
 
+bool ndcrash_register_signal_handler(ndcrash_signal_handler_function handler, struct sigaction old_handlers[NSIG]) {
+    struct sigaction sigactionstruct;
+    memset(&sigactionstruct, 0, sizeof(sigactionstruct));
+    sigactionstruct.sa_flags = SA_SIGINFO;
+    sigactionstruct.sa_sigaction = handler;
+    for (int index = 0; index < NUM_SIGNALS_TO_CATCH; ++index) {
+        const int signo = SIGNALS_TO_CATCH[index];
+        if (sigaction(signo, &sigactionstruct, &old_handlers[signo])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ndcrash_unregister_signal_handler(struct sigaction old_handlers[NSIG]) {
+    for (int signo = 0; signo < NSIG; ++signo) {
+        const struct sigaction *old_handler = &old_handlers[signo];
+        if (!old_handler->sa_handler) continue;
+        sigaction(signo, old_handler, NULL);
+    }
+}

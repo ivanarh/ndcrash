@@ -1,9 +1,15 @@
 #include "ndcrash_backends.h"
 #include "ndcrash_dump.h"
+#include "ndcrash_log.h"
 #include "sizeofa.h"
 #include <libunwind.h>
+#include <libunwind-ptrace.h>
 #include <string.h>
 #include <ucontext.h>
+#include <android/log.h>
+#include <stdbool.h>
+
+#ifdef ENABLE_INPROCESS
 
 void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
 
@@ -13,7 +19,7 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
     unw_context_t uc;
     int result;
 #if defined(__arm__)
-    unw_tdep_context_t *unw_ctx = (unw_tdep_context_t*)&uc;
+    unw_tdep_context_t *unw_ctx = (unw_tdep_context_t *) &uc;
     struct sigcontext *sig_ctx = &context->uc_mcontext;
     memcpy(unw_ctx->regs, &sig_ctx->arm_r0, sizeof(unw_ctx->regs));
 #elif defined(__i386__)
@@ -30,36 +36,114 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
         //Maximum stack size, to prevent infinite loop
         static const int max_stack_size = 128;
         int i = 0;
-        for (; i<max_stack_size; ++i) {
+        for (; i < max_stack_size; ++i) {
             // Getting function data and name.
             unw_get_reg(&unw_cursor, UNW_REG_IP, &regip);
 
             unw_map_cursor_t proc_map_cursor;
             unw_map_local_cursor_get(&proc_map_cursor);
-            unw_map_t proc_map_item = { 0, 0, 0, 0, "", 0 };
+            unw_map_t proc_map_item = {0, 0, 0, 0, "", 0};
             while (unw_map_cursor_get_next(&proc_map_cursor, &proc_map_item) > 0) {
                 if (regip >= proc_map_item.start && regip < proc_map_item.end) break;
             }
 
-            if (unw_get_proc_name(&unw_cursor, unw_function_name, sizeofa(unw_function_name), &offset) > 0) {
+            if (unw_get_proc_name(&unw_cursor, unw_function_name, sizeofa(unw_function_name),
+                                  &offset) > 0) {
                 ndcrash_dump_backtrace_line_full(
                         outfile,
-                         i,
-                         regip - proc_map_item.start,
-                         proc_map_item.path,
-                         unw_function_name,
-                         offset
+                        i,
+                        regip - proc_map_item.start,
+                        proc_map_item.path,
+                        unw_function_name,
+                        offset
                 );
             } else {
                 ndcrash_dump_backtrace_line_part(
                         outfile,
-                         i,
-                         regip - proc_map_item.start,
-                         proc_map_item.path
+                        i,
+                        regip - proc_map_item.start,
+                        proc_map_item.path
                 );
             }
             if (unw_step(&unw_cursor) <= 0) break;
         }
     }
-
 }
+
+#endif //ENABLE_INPROCESS
+
+#ifdef ENABLE_OUTOFPROCESS
+
+void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *message) {
+    const unw_addr_space_t addr_space = unw_create_addr_space(&_UPT_accessors, 0);
+    if (addr_space) {
+        unw_map_cursor_t proc_map_cursor;
+        if (!unw_map_cursor_create(&proc_map_cursor, message->tid)) {
+            unw_map_set(addr_space, &proc_map_cursor);
+            struct UPT_info *const upt_info = _UPT_create(message->tid);
+            if (upt_info) {
+                unw_cursor_t unw_cursor;
+                char unw_function_name[64];
+                if (unw_init_remote(&unw_cursor, addr_space, upt_info) >= 0) {
+                    //Arguments for unw_get_proc_name
+                    unw_word_t regip, offset;
+                    //Maximum stack size, to prevent infinite loop
+                    static const int max_stack_size = 128;
+                    int i = 0;
+                    for (; i < max_stack_size; ++i) {
+                        // Getting function data and name.
+                        unw_get_reg(&unw_cursor, UNW_REG_IP, &regip);
+                        unw_map_t proc_map_item = {0, 0, 0, 0, "", 0};
+                        unw_map_cursor_reset(&proc_map_cursor);
+
+                        bool maps_found = false;
+                        while (unw_map_cursor_get_next(&proc_map_cursor, &proc_map_item) > 0) {
+                            if (regip >= proc_map_item.start && regip < proc_map_item.end) {
+                                maps_found = true;
+                                break;
+                            }
+                        }
+                        if (maps_found) {
+                            if (unw_get_proc_name_by_ip(addr_space, regip, unw_function_name,
+                                                        sizeofa(unw_function_name), &offset,
+                                                        upt_info) >= 0
+                                && unw_function_name[0] != '\0') {
+                                ndcrash_dump_backtrace_line_full(
+                                        outfile,
+                                        i,
+                                        regip - proc_map_item.start,
+                                        proc_map_item.path,
+                                        unw_function_name,
+                                        offset
+                                );
+                            } else {
+                                ndcrash_dump_backtrace_line_part(
+                                        outfile,
+                                        i,
+                                        regip - proc_map_item.start,
+                                        proc_map_item.path
+                                );
+                            }
+                        }
+                        if (unw_step(&unw_cursor) <= 0) break;
+                    }
+                } else {
+                    __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG,
+                                        "Failed to initialize libunwind.");
+                }
+                _UPT_destroy(upt_info);
+            } else {
+                __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Failed to create upt.");
+            }
+            unw_map_cursor_destroy(&proc_map_cursor);
+        } else {
+            __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG,
+                                "Call unw_map_cursor_create failed.");
+        }
+        unw_destroy_addr_space(addr_space);
+    } else {
+        __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Failed to create addr space.");
+    }
+}
+
+#endif

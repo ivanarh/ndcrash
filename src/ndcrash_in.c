@@ -3,11 +3,14 @@
 #include "ndcrash_dump.h"
 #include "ndcrash_private.h"
 #include "ndcrash_log.h"
+#include "ndcrash_signal_utils.h"
 #include <malloc.h>
 #include <signal.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+#ifdef ENABLE_INPROCESS
 
 struct ndcrash_in_context {
 
@@ -16,12 +19,13 @@ struct ndcrash_in_context {
     struct sigaction old_handlers[NSIG];
 
     /// Pointer to unwinding function.
-    ndcrash_unwind_func_ptr unwind_function;
+    ndcrash_in_unwind_func_ptr unwind_function;
 
     /// Path to a log file. Null if not set.
     char *log_file;
 };
 
+/// Global instance of in-process context.
 struct ndcrash_in_context *ndcrash_in_context_instance = NULL;
 
 /// Main signal handling function.
@@ -38,7 +42,7 @@ void ndcrash_in_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoid
     // Dumping header of a crash dump.
     ndcrash_dump_header(outfile, getpid(), gettid(), signo, siginfo->si_code, siginfo->si_addr, context);
 
-
+    // Calling unwinding function.
     if (ndcrash_in_context_instance->unwind_function) {
         ndcrash_in_context_instance->unwind_function(outfile, context);
     }
@@ -83,18 +87,12 @@ enum ndcrash_error ndcrash_in_init(const enum ndcrash_backend backend, const cha
     }
 
     // Trying to register signal handler.
-    struct sigaction sigactionstruct;
-    memset(&sigactionstruct, 0, sizeof(sigactionstruct));
-    sigactionstruct.sa_flags = SA_SIGINFO;
-    sigactionstruct.sa_sigaction = &ndcrash_in_signal_handler;
-    for (int index = 0; index < NUM_SIGNALS_TO_CATCH; ++index) {
-        const int signo = SIGNALS_TO_CATCH[index];
-        if (sigaction(signo, &sigactionstruct, &ndcrash_in_context_instance->old_handlers[signo])) {
-            ndcrash_in_deinit();
-            return ndcrash_error_signal;
-        }
+    if (!ndcrash_register_signal_handler(&ndcrash_in_signal_handler, ndcrash_in_context_instance->old_handlers)) {
+        ndcrash_in_deinit();
+        return ndcrash_error_signal;
     }
 
+    // If log file is set allocating a buffer for it and copying a string.
     if (log_file) {
         size_t log_file_size = strlen(log_file);
         if (log_file_size) {
@@ -108,14 +106,12 @@ enum ndcrash_error ndcrash_in_init(const enum ndcrash_backend backend, const cha
 
 void ndcrash_in_deinit() {
     if (!ndcrash_in_context_instance) return;
-    for (int signo = 0; signo < NSIG; ++signo) {
-        const struct sigaction *old_handler = &ndcrash_in_context_instance->old_handlers[signo];
-        if (!old_handler->sa_handler) continue;
-        sigaction(signo, old_handler, NULL);
-    }
+    ndcrash_unregister_signal_handler(ndcrash_in_context_instance->old_handlers);
     if (ndcrash_in_context_instance->log_file) {
         free(ndcrash_in_context_instance->log_file);
     }
     free(ndcrash_in_context_instance);
     ndcrash_in_context_instance = NULL;
 }
+
+#endif //ENABLE_INPROCESS

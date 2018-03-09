@@ -9,6 +9,15 @@ set(NDCRASH_SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include ${NDCRASH_SOURCE_ROOT})
 file(GLOB NDCRASH_SOURCES ${NDCRASH_SOURCE_ROOT}/*.c)
 
+if (${ENABLE_INPROCESS})
+    add_definitions(-DENABLE_INPROCESS)
+endif()
+
+if (${ENABLE_OUTOFPROCESS})
+    add_definitions(-DENABLE_OUTOFPROCESS)
+endif()
+
+
 if (${ENABLE_LIBCORKSCREW})
     message(STATUS "Backend enabled: libcorkscrew")
     add_definitions(-DENABLE_LIBCORKSCREW)
