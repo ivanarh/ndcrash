@@ -40,14 +40,14 @@ static const int SOCKET_BACKLOG = 1;
 void ndcrash_out_daemon_do_unwinding(struct ndcrash_out_message *message) {
     const bool attached = ptrace(PTRACE_ATTACH, message->tid, NULL, NULL) != -1;
     if (!attached) {
-        __android_log_write(ANDROID_LOG_INFO, NDCRASH_LOG_TAG, "Ptrace attach failed");
+        NDCRASHLOG(INFO, "Ptrace attach failed");
         return;
     }
-    __android_log_write(ANDROID_LOG_INFO, NDCRASH_LOG_TAG, "Ptrace attach successful");
+    NDCRASHLOG(INFO, "Ptrace attach successful");
 
     int status = 0;
     if (waitpid(message->tid, &status, WUNTRACED) < 0) {
-        __android_log_print(ANDROID_LOG_INFO, NDCRASH_LOG_TAG, "Waitpid failed, error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(INFO,  "Waitpid failed, error: %s (%d)", strerror(errno), errno);
     } else {
         //Opening output file
         int outfile = -1;
@@ -71,7 +71,7 @@ void ndcrash_out_daemon_do_unwinding(struct ndcrash_out_message *message) {
         }
 
         // Final line of crash dump.
-        ndcrash_log_write_line(outfile, " ");
+        ndcrash_dump_write_line(outfile, " ");
 
         // Closing output file.
         if (outfile >= 0) {
@@ -94,7 +94,7 @@ void ndcrash_out_daemon_process_client(int clientsock)
         FD_SET(ndcrash_out_daemon_context_instance->interruptor[0], &fdset);
         const int select_result = select(MAX(clientsock, ndcrash_out_daemon_context_instance->interruptor[0]) + 1, &fdset, NULL, NULL, NULL);
         if (select_result < 0) {
-            __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Select on recv error: %s (%d)", strerror(errno), errno);
+            NDCRASHLOG(ERROR,"Select on recv error: %s (%d)", strerror(errno), errno);
             close(clientsock);
             return;
         }
@@ -105,14 +105,14 @@ void ndcrash_out_daemon_process_client(int clientsock)
         }
         const int bytes_read = recv(clientsock, (char *)&message + overall_read, sizeof(struct ndcrash_out_message) - overall_read, 0);
         if (bytes_read < 0) {
-            __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Recv error: %s (%d)", strerror(errno), errno);
+            NDCRASHLOG(ERROR,"Recv error: %s (%d)", strerror(errno), errno);
             close(clientsock);
             return;
         }
         overall_read += bytes_read;
     } while (overall_read < sizeof(struct ndcrash_out_message));
 
-    __android_log_print(ANDROID_LOG_INFO, NDCRASH_LOG_TAG, "Client info received, pid: %d tid: %d", message.pid, message.tid);
+    NDCRASHLOG(INFO, "Client info received, pid: %d tid: %d", message.pid, message.tid);
 
     ndcrash_out_daemon_do_unwinding(&message);
 
@@ -126,7 +126,7 @@ void *ndcrash_out_daemon_function(void *arg) {
     // Creating socket
     const int listensock = socket(PF_LOCAL, SOCK_STREAM, 0);
     if (listensock < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Couldn't create socket, error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(ERROR,"Couldn't create socket, error: %s (%d)", strerror(errno), errno);
         return NULL;
     }
 
@@ -147,17 +147,17 @@ void *ndcrash_out_daemon_function(void *arg) {
     memcpy(addr.sun_path + 1, SOCKET_NAME, socket_name_size);
     int addrlen = sizeof(sa_family_t) + 1 + socket_name_size;
     if (bind(listensock, (struct sockaddr *)&addr, addrlen) < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Couldn't bind socket, error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(ERROR,"Couldn't bind socket, error: %s (%d)", strerror(errno), errno);
         return NULL;
     }
 
     // Listening
     if (listen(listensock, SOCKET_BACKLOG) < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Couldn't listen socket, error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(ERROR,"Couldn't listen socket, error: %s (%d)", strerror(errno), errno);
         return NULL;
     }
 
-    __android_log_write(ANDROID_LOG_INFO, NDCRASH_LOG_TAG, "Daemon is successfuly started, accepting connections...");
+    NDCRASHLOG(INFO, "Daemon is successfuly started, accepting connections...");
 
     // Accepting connections in a cycle.
     for (;;) {
@@ -167,7 +167,7 @@ void *ndcrash_out_daemon_function(void *arg) {
         FD_SET(ndcrash_out_daemon_context_instance->interruptor[0], &fdset);
         const int select_result = select(MAX(listensock, ndcrash_out_daemon_context_instance->interruptor[0]) + 1, &fdset, NULL, NULL, NULL);
         if (select_result < 0) {
-            __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Select on accept error: %s (%d)", strerror(errno), errno);
+            NDCRASHLOG(ERROR,"Select on accept error: %s (%d)", strerror(errno), errno);
             break;
         }
         if (FD_ISSET(ndcrash_out_daemon_context_instance->interruptor[0], &fdset)) {
@@ -180,11 +180,11 @@ void *ndcrash_out_daemon_function(void *arg) {
         socklen_t alen = sizeof(ss);
         int clientsock = accept(listensock, addrp, &alen);
         if (clientsock == -1) {
-            __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Accept failed, error: %s (%d)", strerror(errno), errno);
+            NDCRASHLOG(ERROR,"Accept failed, error: %s (%d)", strerror(errno), errno);
             continue;
         }
 
-        __android_log_print(ANDROID_LOG_INFO, NDCRASH_LOG_TAG, "Client connected, socket: %d", clientsock);
+        NDCRASHLOG(INFO, "Client connected, socket: %d", clientsock);
         ndcrash_out_daemon_process_client(clientsock);
     }
 

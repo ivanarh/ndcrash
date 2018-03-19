@@ -41,7 +41,7 @@ bool ndcrash_register_signal_handler(ndcrash_signal_handler_function handler, st
 
 /**
  * Unregisters previously set signal handlers restoring old taken from passed array.
- * @param old_handlers
+ * @param old_handlers Previously set signal handlers array.
  */
 bool ndcrash_unregister_signal_handler(struct sigaction old_handlers[NSIG]);
 

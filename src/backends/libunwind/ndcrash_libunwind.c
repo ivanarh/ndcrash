@@ -255,24 +255,22 @@ void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *messa
                         if (unw_step(&unw_cursor) <= 0) break;
                     }
                 } else {
-                    __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG,
-                                        "Failed to initialize libunwind.");
+                    NDCRASHLOG(ERROR, "Failed to initialize libunwind.");
                 }
                 _UPT_destroy(ndcrash_as_arg.upt_info);
             } else {
-                __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Failed to create upt.");
+                NDCRASHLOG(ERROR, "Failed to create upt.");
             }
             unw_map_cursor_destroy(&proc_map_cursor);
         } else {
-            __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG,
-                                "Call unw_map_cursor_create failed.");
+            NDCRASHLOG(ERROR, "Call unw_map_cursor_create failed.");
         }
         // Remove the map from the address space before destroying it.
         // It will be freed in the UnwindMap destructor.
         unw_map_set(addr_space, NULL);
         unw_destroy_addr_space(addr_space);
     } else {
-        __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Failed to create addr space.");
+        NDCRASHLOG(ERROR, "Failed to create addr space.");
     }
 }
 

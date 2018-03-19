@@ -34,11 +34,25 @@ endif()
 if (${ENABLE_LIBUNWIND})
     message(STATUS "Backend enabled: libunwind")
     add_definitions(-DENABLE_LIBUNWIND)
-    add_definitions(-DHAVE_CONFIG_H -D_GNU_SOURCE)
-    file(GLOB NDCRASH_BACKEND_SOURCES ${NDCRASH_SOURCE_ROOT}/backends/libunwind/*.c)
-    list(APPEND NDCRASH_SOURCES ${NDCRASH_BACKEND_SOURCES})
 
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/libunwind-ndk/include ${CMAKE_CURRENT_SOURCE_DIR}/external/libunwind-ndk/include/tdep ${CMAKE_CURRENT_SOURCE_DIR}/external/libunwind-ndk/src)
+    #Creating object library in order to pass additional defines for its sources.
+    file(GLOB NDCRASH_BACKEND_SOURCES ${NDCRASH_SOURCE_ROOT}/backends/libunwind/*.c)
+    add_library(unwindbackend OBJECT ${NDCRASH_BACKEND_SOURCES})
+    list(APPEND LIBUNWIND_BACKEND_DEFINES
+        HAVE_CONFIG_H
+        _GNU_SOURCE
+    )
+    set_target_properties(unwindbackend
+        PROPERTIES
+        COMPILE_DEFINITIONS "${LIBUNWIND_BACKEND_DEFINES}"
+    )
+    list(APPEND NDCRASH_SOURCES $<TARGET_OBJECTS:unwindbackend>)
+
+    include_directories(
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/libunwind-ndk/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/libunwind-ndk/include/tdep
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/libunwind-ndk/src
+    )
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/libunwind-ndk/cmake)
     list(APPEND LINK_LIBRARIES unwind)
 else()

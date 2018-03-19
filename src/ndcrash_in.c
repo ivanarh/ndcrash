@@ -48,7 +48,7 @@ void ndcrash_in_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoid
     }
 
     // Final new line of crash dump.
-    ndcrash_log_write_line(outfile, " ");
+    ndcrash_dump_write_line(outfile, " ");
 
     // Closing an output file.
     if (outfile) {

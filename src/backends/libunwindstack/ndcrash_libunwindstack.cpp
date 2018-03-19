@@ -19,12 +19,12 @@ void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *context,
     for (size_t frame_num = 0; frame_num < 128; frame_num++) {
         MapInfo * const map_info = maps.Find(regs->pc());
         if (!map_info) {
-            __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "MapInfo.Find error");
+            NDCRASHLOG(ERROR, "MapInfo.Find error");
             break;
         }
         Elf *elf = map_info->GetElf(getpid(), true);
         if (!elf) {
-            __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "MapInfo.GetElf error");
+            NDCRASHLOG(ERROR, "MapInfo.GetElf error");
             break;
         }
         uint64_t rel_pc = elf->GetRelPc(regs->pc(), map_info);
@@ -62,7 +62,7 @@ void ndcrash_in_unwind_libunwindstack(int outfile, struct ucontext *context) {
     // Initializing /proc/self/maps cache.
     LocalMaps maps;
     if (!maps.Parse()) {
-        __android_log_write(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "/proc/self/maps parsing error.");
+        NDCRASHLOG(ERROR, "/proc/self/maps parsing error.");
     }
 
     // Unwinding stack.
@@ -77,7 +77,7 @@ void ndcrash_in_unwind_libunwindstack(int outfile, struct ucontext *context) {
 void ndcrash_out_unwind_libunwindstack(int outfile, struct ndcrash_out_message *message) {
     RemoteMaps maps(message->tid);
     if (!maps.Parse()) {
-        __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Failed to parse map data.");
+        NDCRASHLOG(ERROR, "Failed to parse map data.");
         return;
     }
 

@@ -1,5 +1,4 @@
 #include "ndcrash.h"
-#include "ndcrash_out.h"
 #include "ndcrash_private.h"
 #include "ndcrash_signal_utils.h"
 #include "ndcrash_log.h"
@@ -36,9 +35,8 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
     msg.faultaddr = siginfo->si_addr;
     memcpy(&msg.context, ctxvoid, sizeof(struct ucontext));
 
-    __android_log_print(
-            ANDROID_LOG_ERROR,
-            NDCRASH_LOG_TAG,
+    NDCRASHLOG(
+            ERROR,
             "Signal caught: %d (%s), code %d (%s) pid: %d, tid: %d",
             signo,
             ndcrash_get_signame(signo),
@@ -51,7 +49,7 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
     // Using blocking sockets!
     const int sock = socket(PF_LOCAL, SOCK_STREAM, 0);
     if (sock < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Couldn't create socket, error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(ERROR,"Couldn't create socket, error: %s (%d)", strerror(errno), errno);
         return;
     }
 
@@ -67,7 +65,7 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
 
     // Connecting.
     if (connect(sock, (struct sockaddr *)&addr, sizeof(addr.sun_family) + 1 + socket_name_size)) {
-        __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Couldn't connect socket, error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(ERROR,"Couldn't connect socket, error: %s (%d)", strerror(errno), errno);
         close(sock);
         return;
     }
@@ -75,17 +73,17 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
     // Sending.
     const int sent = send(sock, &msg, sizeof(msg), 0);
     if (sent < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Send error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(ERROR,"Send error: %s (%d)", strerror(errno), errno);
     } else if (sent != sizeof(msg)) {
-        __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Error: couldn't send whole message, sent bytes: %d, message size: %d", sent, sizeof(msg));
+        NDCRASHLOG(ERROR,"Error: couldn't send whole message, sent bytes: %d, message size: %d", sent, sizeof(msg));
     } else {
-        __android_log_print(ANDROID_LOG_INFO, NDCRASH_LOG_TAG, "Successfuly sent data to crash service.");
+        NDCRASHLOG(INFO, "Successfuly sent data to crash service.");
     }
 
     // Blocking read.
     char c = 0;
     if (recv(sock, &c, 1, 0) < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, "Recv error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(ERROR,"Recv error: %s (%d)", strerror(errno), errno);
     }
 
     close(sock);

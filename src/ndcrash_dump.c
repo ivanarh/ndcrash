@@ -8,6 +8,14 @@
 #include <fcntl.h>
 #include <android/log.h>
 
+/**
+ * Reads a file contents from passed filename to output buffer with specified size. Appends '\0'
+ * character after file data that has been read.
+ * @param filename File name to read.
+ * @param outbuffer Buffer where to read a file
+ * @param buffersize Size of buffer in bytes.
+ * @return Count of read bytes not including terminating '\0' character or -1 or error.
+ */
 ssize_t ndcrash_read_file(const char *filename, char *outbuffer, size_t buffersize) {
     const int fd = open(filename, O_RDONLY);
     if (fd < 0) return -1;
@@ -24,9 +32,8 @@ ssize_t ndcrash_read_file(const char *filename, char *outbuffer, size_t buffersi
 int ndcrash_dump_create_file(const char *path) {
     const int result = open(path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (result < 0) {
-        __android_log_print(
-                ANDROID_LOG_ERROR,
-                NDCRASH_LOG_TAG,
+        NDCRASHLOG(
+                ERROR,
                 "Error creating dump file %s: %s (%d)",
                 path,
                 strerror(errno),
@@ -35,16 +42,49 @@ int ndcrash_dump_create_file(const char *path) {
     return result;
 }
 
+#ifndef NDCRASH_LOG_BUFFER_SIZE
+#define NDCRASH_LOG_BUFFER_SIZE 256
+#endif
+
+void ndcrash_dump_write_line(int fd, const char *format, ...) {
+    char buffer[NDCRASH_LOG_BUFFER_SIZE];
+    va_list args;
+    va_start(args, format);
+
+    // First writing to a log as is.
+    __android_log_vprint(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, format, args);
+
+    // Writing file to log may be disabled.
+    if (fd <= 0) return;
+
+    // Writing to a buffer.
+    int printed = vsnprintf(buffer, NDCRASH_LOG_BUFFER_SIZE, format, args);
+
+    va_end(args);
+
+    // printed contains the number of characters that would have been written if n had been sufficiently
+    // large, not counting the terminating null character.
+    if (printed > 0) {
+        if (printed >= NDCRASH_LOG_BUFFER_SIZE) {
+            printed = NDCRASH_LOG_BUFFER_SIZE - 1;
+        }
+        // Replacing last buffer character with new line.
+        buffer[printed] = '\n';
+
+        // Writing to a file including \n character.
+        write(fd, buffer, (size_t)printed + 1);
+    }
+}
+
 void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_code, void *faultaddr,
                          struct ucontext *context) {
-    ndcrash_log_write_line(outfile,
-                           "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***");
-    ndcrash_log_write_line(outfile, "Build fingerprint: ''");
-    ndcrash_log_write_line(outfile, "Revision: '0'");
+    ndcrash_dump_write_line(outfile, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***");
+    ndcrash_dump_write_line(outfile, "Build fingerprint: ''");
+    ndcrash_dump_write_line(outfile, "Revision: '0'");
 #ifdef __arm__
-    ndcrash_log_write_line(outfile, "ABI: 'arm'");
+    ndcrash_dump_write_line(outfile, "ABI: 'arm'");
 #elif defined(__i386__)
-    ndcrash_log_write_line(outfile, "ABI: 'x86'");
+    ndcrash_dump_write_line(outfile, "ABI: 'x86'");
 #endif
 
     {
@@ -69,7 +109,7 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
             }
         }
 
-        ndcrash_log_write_line(
+        ndcrash_dump_write_line(
                 outfile,
                 "pid: %d, tid: %d, name: %s  >>> %s <<<",
                 pid,
@@ -84,7 +124,7 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
         } else {
             snprintf(addr_buffer, sizeof(addr_buffer), "--------");
         }
-        ndcrash_log_write_line(
+        ndcrash_dump_write_line(
                 outfile,
                 "signal %d (%s), code %d (%s), fault addr %s",
                 signo,
@@ -96,46 +136,46 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
 
     const mcontext_t *const ctx = &context->uc_mcontext;
 #if defined(__arm__)
-    ndcrash_log_write_line(outfile, "    r0 %08x  r1 %08x  r2 %08x  r3 %08x",
-                           ctx->arm_r0, ctx->arm_r1, ctx->arm_r2, ctx->arm_r3);
-    ndcrash_log_write_line(outfile, "    r4 %08x  r5 %08x  r6 %08x  r7 %08x",
-                           ctx->arm_r4, ctx->arm_r5, ctx->arm_r6, ctx->arm_r7);
-    ndcrash_log_write_line(outfile, "    r8 %08x  r9 %08x  sl %08x  fp %08x",
-                           ctx->arm_r8, ctx->arm_r9, ctx->arm_r10, ctx->arm_fp);
-    ndcrash_log_write_line(outfile, "    ip %08x  sp %08x  lr %08x  pc %08x  cpsr %08x",
-                           ctx->arm_ip, ctx->arm_sp, ctx->arm_lr, ctx->arm_pc, ctx->arm_cpsr);
+    ndcrash_dump_write_line(outfile, "    r0 %08x  r1 %08x  r2 %08x  r3 %08x",
+                            ctx->arm_r0, ctx->arm_r1, ctx->arm_r2, ctx->arm_r3);
+    ndcrash_dump_write_line(outfile, "    r4 %08x  r5 %08x  r6 %08x  r7 %08x",
+                            ctx->arm_r4, ctx->arm_r5, ctx->arm_r6, ctx->arm_r7);
+    ndcrash_dump_write_line(outfile, "    r8 %08x  r9 %08x  sl %08x  fp %08x",
+                            ctx->arm_r8, ctx->arm_r9, ctx->arm_r10, ctx->arm_fp);
+    ndcrash_dump_write_line(outfile, "    ip %08x  sp %08x  lr %08x  pc %08x  cpsr %08x",
+                            ctx->arm_ip, ctx->arm_sp, ctx->arm_lr, ctx->arm_pc, ctx->arm_cpsr);
 #elif defined(__i386__)
-    ndcrash_log_write_line(outfile, "    eax %08lx  ebx %08lx  ecx %08lx  edx %08lx",
+    ndcrash_dump_write_line(outfile, "    eax %08lx  ebx %08lx  ecx %08lx  edx %08lx",
             ctx->gregs[REG_EAX], ctx->gregs[REG_EBX], ctx->gregs[REG_ECX], ctx->gregs[REG_EDX]);
-    ndcrash_log_write_line(outfile, "    esi %08lx  edi %08lx",
+    ndcrash_dump_write_line(outfile, "    esi %08lx  edi %08lx",
             ctx->gregs[REG_ESI], ctx->gregs[REG_EDI]);
-    ndcrash_log_write_line(outfile, "    xcs %08x  xds %08x  xes %08x  xfs %08x  xss %08x",
+    ndcrash_dump_write_line(outfile, "    xcs %08x  xds %08x  xes %08x  xfs %08x  xss %08x",
             ctx->gregs[REG_CS], ctx->gregs[REG_DS], ctx->gregs[REG_ES], ctx->gregs[REG_FS], ctx->gregs[REG_SS]);
-    ndcrash_log_write_line(outfile, "    eip %08lx  ebp %08lx  esp %08lx  flags %08lx",
+    ndcrash_dump_write_line(outfile, "    eip %08lx  ebp %08lx  esp %08lx  flags %08lx",
             ctx->gregs[REG_EIP], ctx->gregs[REG_EBP], ctx->gregs[REG_ESP], ctx->gregs[REG_EFL]);
 #endif
 
-    ndcrash_log_write_line(outfile, " ");
-    ndcrash_log_write_line(outfile, "backtrace:");
+    ndcrash_dump_write_line(outfile, " ");
+    ndcrash_dump_write_line(outfile, "backtrace:");
 }
 
 void ndcrash_dump_backtrace_line_full(int outfile, int counter, intptr_t pc, const char *path,
                                       const char *funcname, int offset) {
-    ndcrash_log_write_line(outfile,
-                           "    #%02d pc %08lx  %s (%s+%d)",
-                           counter,
-                           pc,
-                           path,
-                           funcname,
-                           offset
+    ndcrash_dump_write_line(outfile,
+                            "    #%02d pc %08lx  %s (%s+%d)",
+                            counter,
+                            pc,
+                            path,
+                            funcname,
+                            offset
     );
 }
 
 void ndcrash_dump_backtrace_line_part(int outfile, int counter, intptr_t pc, const char *path) {
-    ndcrash_log_write_line(outfile,
-                           "    #%02d pc %08lx  %s",
-                           counter,
-                           pc,
-                           path
+    ndcrash_dump_write_line(outfile,
+                            "    #%02d pc %08lx  %s",
+                            counter,
+                            pc,
+                            path
     );
 }

@@ -55,7 +55,6 @@ void ndcrash_in_unwind_libcorkscrew(int outfile, struct ucontext *context) {
 
 void ndcrash_out_unwind_libcorkscrew(int outfile, struct ndcrash_out_message *message) {
     ptrace_context_t *ptrace_context = load_ptrace_context(message->tid);
-    map_info_t *map_info = acquire_my_map_info_list();
     backtrace_frame_t frames[MAX_DEPTH] = { { 0, 0, 0 } };
 
     // Collecting backtrace
@@ -74,7 +73,6 @@ void ndcrash_out_unwind_libcorkscrew(int outfile, struct ndcrash_out_message *me
     ndcrash_common_unwind_libcorkscrew(outfile, backtrace_symbols, frame_count);
 
     free_backtrace_symbols(backtrace_symbols, (size_t)frame_count);
-    release_my_map_info_list(map_info);
     free_ptrace_context(ptrace_context);
 }
 

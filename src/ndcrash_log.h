@@ -5,14 +5,10 @@
 #define NDCRASH_LOG_TAG "NDCRASH"
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void ndcrash_log_write_line(int fd, const char *format, ...);
-
-#ifdef __cplusplus
-}
+#ifdef NDCRASH_NO_LOG
+#define NDCRASHLOG(level, ...)
+#else
+#define NDCRASHLOG(level, ...) __android_log_print(ANDROID_LOG_##level, NDCRASH_LOG_TAG, __VA_ARGS__)
 #endif
 
 #endif //NDCRASHDEMO_NDCRASH_LOG_H
