@@ -9,4 +9,11 @@
  */
 bool ndcrash_set_nonblock(int fd);
 
+/**
+ * Disable signal capabilities of a socket.
+ * @param socket Socket descriptor
+ * @return Flag if disabling was successful.
+ */
+bool ndcrash_set_nosignal(int socket);
+
 #endif //NDCRASH_FD_UTILS_H

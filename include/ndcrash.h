@@ -10,7 +10,8 @@ enum ndcrash_backend {                      // Supported architectures
     ndcrash_backend_libcorkscrew,           // Both
     ndcrash_backend_libunwind,              // Both
     ndcrash_backend_libunwindstack,         // Both
-    ndcrash_backend_cxxabi                  // In-process
+    ndcrash_backend_cxxabi,                 // In-process
+    ndcrash_backend_stackscan,              // In-process
 };
 
 /**

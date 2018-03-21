@@ -19,3 +19,6 @@ bool ndcrash_set_nonblock(int fd) {
     }
     return true;
 }
+
+bool ndcrash_set_nosignal(int socket) {
+}

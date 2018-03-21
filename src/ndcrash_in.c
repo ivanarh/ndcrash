@@ -85,6 +85,11 @@ enum ndcrash_error ndcrash_in_init(const enum ndcrash_backend backend, const cha
             ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_cxxabi;
             break;
 #endif
+#ifdef ENABLE_STACKSCAN
+        case ndcrash_backend_stackscan:
+            ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_stackscan;
+            break;
+#endif
     }
     if (!ndcrash_in_context_instance->unwind_function) {
         ndcrash_in_deinit();
