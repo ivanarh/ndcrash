@@ -1,5 +1,6 @@
 #ifndef NDCRASHDEMO_NDCRASH_LOG_H
 #define NDCRASHDEMO_NDCRASH_LOG_H
+#include <android/log.h>
 
 #ifndef NDCRASH_LOG_TAG
 #define NDCRASH_LOG_TAG "NDCRASH"
