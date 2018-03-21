@@ -80,6 +80,11 @@ enum ndcrash_error ndcrash_in_init(const enum ndcrash_backend backend, const cha
             ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_libunwindstack;
             break;
 #endif
+#ifdef ENABLE_CXXABI
+        case ndcrash_backend_cxxabi:
+            ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_cxxabi;
+            break;
+#endif
     }
     if (!ndcrash_in_context_instance->unwind_function) {
         ndcrash_in_deinit();

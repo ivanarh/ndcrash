@@ -6,10 +6,11 @@
 /**
  * Enum representing supported backends for stack unwinding.
  */
-enum ndcrash_backend {
-    ndcrash_backend_libcorkscrew,
-    ndcrash_backend_libunwind,
-    ndcrash_backend_libunwindstack,
+enum ndcrash_backend {                      // Supported architectures
+    ndcrash_backend_libcorkscrew,           // Both
+    ndcrash_backend_libunwind,              // Both
+    ndcrash_backend_libunwindstack,         // Both
+    ndcrash_backend_cxxabi                  // In-process
 };
 
 /**
