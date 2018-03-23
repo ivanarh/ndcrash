@@ -9,6 +9,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <asm/unistd.h>
 
 #ifdef ENABLE_INPROCESS
 
@@ -54,6 +55,13 @@ void ndcrash_in_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoid
     if (outfile) {
         close(outfile);
     }
+
+    // In some cases we need to re-send a signal to run standard bionic handler.
+    if (siginfo->si_code <= 0 || signo == SIGABRT) {
+        if (syscall(__NR_tgkill, getpid(), gettid(), signo) < 0) {
+            _exit(1);
+        }
+    }
 }
 
 enum ndcrash_error ndcrash_in_init(const enum ndcrash_backend backend, const char *log_file) {
@@ -95,7 +103,7 @@ enum ndcrash_error ndcrash_in_init(const enum ndcrash_backend backend, const cha
         ndcrash_in_deinit();
         return ndcrash_error_not_supported;
     }
-
+    
     // Trying to register signal handler.
     if (!ndcrash_register_signal_handler(&ndcrash_in_signal_handler, ndcrash_in_context_instance->old_handlers)) {
         ndcrash_in_deinit();
