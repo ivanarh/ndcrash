@@ -40,11 +40,7 @@ _Unwind_Reason_Code callback(struct _Unwind_Context *context, void *data) {
             );
         }
     } else {
-        ndcrash_dump_write_line(
-                ud->outfile,
-                "    #%02d",
-                ud->frameno
-        );
+        ndcrash_dump_backtrace_line_no_data(ud->outfile, ud->frameno);
     }
     return ++ud->frameno >= MAX_DEPTH ? _URC_END_OF_STACK : _URC_NO_REASON;
 }

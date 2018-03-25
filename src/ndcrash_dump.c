@@ -179,3 +179,11 @@ void ndcrash_dump_backtrace_line_part(int outfile, int counter, intptr_t pc, con
                             path
     );
 }
+
+void ndcrash_dump_backtrace_line_no_data(int outfile, int counter) {
+    ndcrash_dump_write_line(
+            outfile,
+            "    #%02d",
+            counter
+    );
+}

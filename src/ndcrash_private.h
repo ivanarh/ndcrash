@@ -46,5 +46,14 @@ typedef void (*ndcrash_out_unwind_func_ptr)(int outfile, struct ndcrash_out_mess
 /// Socket for out-of-process architecture communication.
 static const char SOCKET_NAME[] = "ru.ivanarh.ndcrash.socket";
 
+/// This macro allows us to configure maximum lines count in backtrace.
+#ifndef NDCRASH_MAX_FRAMES
+#define NDCRASH_MAX_FRAMES 128
+#endif
+
+/// This macro allows us to configure maximum function name length. Used for buffer size.
+#ifndef NDCRASH_MAX_FUNCTION_NAME_LENGTH
+#define NDCRASH_MAX_FUNCTION_NAME_LENGTH 64
+#endif
 
 #endif //NDCRASH_PRIVATE_H

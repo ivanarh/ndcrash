@@ -61,6 +61,15 @@ void ndcrash_dump_backtrace_line_full(int outfile, int counter, intptr_t pc, con
  */
 void ndcrash_dump_backtrace_line_part(int outfile, int counter, intptr_t pc, const char *path);
 
+/**
+ * Writes a very partial line of backtrace to a crash report when couldn't obtain any information about
+ * stack frame. In this case only frame number is written to a log.
+ * @param outfile Output file descriptor for a crash report.
+ * @param counter Number of backtrace element.
+ */
+void ndcrash_dump_backtrace_line_no_data(int outfile, int counter);
+
+
 #ifdef __cplusplus
 }
 #endif
