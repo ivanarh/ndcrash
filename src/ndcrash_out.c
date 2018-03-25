@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <malloc.h>
 #include <unistd.h>
+#include <asm/unistd.h>
 #include <android/log.h>
 #include <sys/socket.h>
 #include <linux/un.h>
@@ -87,6 +88,13 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
     }
 
     close(sock);
+
+    // In some cases we need to re-send a signal to run standard bionic handler.
+    if (siginfo->si_code <= 0 || signo == SIGABRT) {
+        if (syscall(__NR_tgkill, getpid(), gettid(), signo) < 0) {
+            _exit(1);
+        }
+    }
 }
 
 enum ndcrash_error ndcrash_out_init() {
