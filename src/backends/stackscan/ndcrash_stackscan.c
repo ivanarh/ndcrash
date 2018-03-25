@@ -26,15 +26,28 @@ static uintptr_t ndcrash_sp_from_ucontext(const ucontext_t *uc) {
 #endif
 }
 
+static uintptr_t ndcrash_rewind_pc(uintptr_t pc) {
+#ifdef __arm__
+    if (pc & 1) {
+        // Thumb mode.
+        const uintptr_t value = *((uintptr_t *)(pc - 5));
+        if ((value & 0xe000f000) != 0xe000f000) {
+            return pc - 2;
+        }
+    }
+    return pc - 4;
+#elif defined(__i386__)
+    return pc - 1;
+#else
+#error Architecture is not supported.
+#endif
+}
+
 static void ndcrash_try_unwind_frame(uintptr_t pc, int outfile, int *frameno, bool rewind) {
     Dl_info info;
     if (pc && dladdr((void *)pc, &info)) {
         if (rewind) {
-#ifdef __arm__
-            pc-= 4; //Thumb isn't supported.
-#elif defined(__i386__)
-            pc -= 1;
-#endif
+            pc = ndcrash_rewind_pc(pc);
         }
         if (info.dli_sname && info.dli_saddr) {
             ndcrash_dump_backtrace_line_full(
