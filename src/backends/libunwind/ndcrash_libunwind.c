@@ -5,12 +5,13 @@
 #include "sizeofa.h"
 #include <libunwind.h>
 #include <libunwind-ptrace.h>
+#include <libunwind_i.h>
+#include <mempool.h>
 #include <string.h>
 #include <ucontext.h>
 #include <android/log.h>
 #include <stdbool.h>
 #include <malloc.h>
-#include <libunwind_i.h>
 
 #ifdef ENABLE_INPROCESS
 
@@ -32,24 +33,29 @@ void ndcrash_in_unwind_libunwind_get_context(struct ucontext *context, unw_conte
 }
 
 void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
+    // Parsing local /proc/pid/maps
+    unw_map_local_create();
 
-    // Cursor - the main structure used for unwinding.
-    unw_cursor_t unw_cursor;
+    // Cursor - the main structure used for unwinding with a huge size. Allocating on stack is undesirable
+    // due to limited alternate stack size. malloc isn't signal safe. Using libunwind memory pools.
+    struct mempool cursor_pool;
+    mempool_init(&cursor_pool, sizeof(unw_cursor_t), 0);
+    unw_cursor_t * const unw_cursor = mempool_alloc(&cursor_pool);
 
     // Buffer for function name.
     char unw_function_name[NDCRASH_MAX_FUNCTION_NAME_LENGTH];
 
     // Initializing context instance (processor state).
-    unw_context_t uc;
-    ndcrash_in_unwind_libunwind_get_context(context, &uc);
+    unw_context_t unw_ctx;
+    ndcrash_in_unwind_libunwind_get_context(context, &unw_ctx);
 
     // Initializing cursor for unwinding from passed processor context.
-    if (!unw_init_local(&unw_cursor, &uc)) {
+    if (!unw_init_local(unw_cursor, &unw_ctx)) {
 
         for (int i = 0; i < NDCRASH_MAX_FRAMES; ++i) {
             // Getting program counter value for the a current stack frame.
             unw_word_t regip;
-            unw_get_reg(&unw_cursor, UNW_REG_IP, &regip);
+            unw_get_reg(unw_cursor, UNW_REG_IP, &regip);
 
             // Looking for a object (shared library) where a function is located.
             unw_map_cursor_t proc_map_cursor;
@@ -62,9 +68,14 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
                     break;
                 }
             }
+
+            // Looking for a function name.
+            unw_word_t offset;
+            const bool func_name_found = unw_get_proc_name(unw_cursor, unw_function_name, sizeofa(unw_function_name), &offset) > 0;
+
+            // Writing a backtrace line.
             if (maps_found) {
-                unw_word_t offset;
-                if (unw_get_proc_name(&unw_cursor, unw_function_name, sizeofa(unw_function_name), &offset) > 0) {
+                if (func_name_found) {
                     ndcrash_dump_backtrace_line_full(
                             outfile,
                             i,
@@ -82,13 +93,24 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
                     );
                 }
             } else {
-                ndcrash_dump_backtrace_line_no_data(outfile, i);
+                if (func_name_found) {
+                    ndcrash_dump_backtrace_line_func_name(outfile, i, unw_function_name, offset);
+                } else {
+                    ndcrash_dump_backtrace_line_no_data(outfile, i);
+                }
             }
 
             // Trying to switch to a previous stack frame.
-            if (unw_step(&unw_cursor) <= 0) break;
+            if (unw_step(unw_cursor) <= 0) break;
         }
     }
+
+    // Freeing a memory for cursor.
+    mempool_free(&cursor_pool, unw_cursor);
+
+    // Destroying local /proc/pid/maps
+    unw_map_local_destroy();
+
 }
 
 #endif //ENABLE_INPROCESS
@@ -245,12 +267,19 @@ void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *messa
                                 break;
                             }
                         }
+
+                        // Looking for a function name.
+                        unw_word_t offset;
+                        const bool func_name_found = unw_get_proc_name_by_ip(
+                                addr_space,
+                                regip,
+                                unw_function_name,
+                                sizeofa(unw_function_name),
+                                &offset,&ndcrash_as_arg) >= 0 && unw_function_name[0] != '\0';
+
+                        // Writing a backtrace line.
                         if (maps_found) {
-                            unw_word_t offset;
-                            if (unw_get_proc_name_by_ip(addr_space, regip, unw_function_name,
-                                                        sizeofa(unw_function_name), &offset,
-                                                        &ndcrash_as_arg) >= 0
-                                && unw_function_name[0] != '\0') {
+                            if (func_name_found) {
                                 ndcrash_dump_backtrace_line_full(
                                         outfile,
                                         i,
@@ -268,7 +297,11 @@ void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *messa
                                 );
                             }
                         } else {
-                            ndcrash_dump_backtrace_line_no_data(outfile, i);
+                            if (func_name_found) {
+                                ndcrash_dump_backtrace_line_func_name(outfile, i, unw_function_name, offset);
+                            } else {
+                                ndcrash_dump_backtrace_line_no_data(outfile, i);
+                            }
                         }
 
                         // Trying to switch to a previous stack frame.

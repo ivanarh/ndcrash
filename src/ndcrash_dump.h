@@ -62,6 +62,16 @@ void ndcrash_dump_backtrace_line_full(int outfile, int counter, intptr_t pc, con
 void ndcrash_dump_backtrace_line_part(int outfile, int counter, intptr_t pc, const char *path);
 
 /**
+ * Writes a very partial line of backtrace to a crash report when we only managed to obtain a function
+ * name and offset withing it.
+ * @param outfile Output file descriptor for a crash report.
+ * @param counter Number of backtrace element.
+ * @param funcname Name of function.
+ * @param offset Offset of instruction from function start. In bytes.
+ */
+void ndcrash_dump_backtrace_line_func_name(int outfile, int counter, const char *funcname, int offset);
+
+/**
  * Writes a very partial line of backtrace to a crash report when couldn't obtain any information about
  * stack frame. In this case only frame number is written to a log.
  * @param outfile Output file descriptor for a crash report.

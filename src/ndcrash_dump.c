@@ -180,6 +180,16 @@ void ndcrash_dump_backtrace_line_part(int outfile, int counter, intptr_t pc, con
     );
 }
 
+void ndcrash_dump_backtrace_line_func_name(int outfile, int counter, const char *funcname, int offset) {
+    ndcrash_dump_write_line(
+            outfile,
+            "    #%02d  (%s+%d)",
+            counter,
+            funcname,
+            offset
+    );
+}
+
 void ndcrash_dump_backtrace_line_no_data(int outfile, int counter) {
     ndcrash_dump_write_line(
             outfile,
