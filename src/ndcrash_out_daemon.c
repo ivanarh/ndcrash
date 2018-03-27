@@ -1,5 +1,5 @@
 #include "ndcrash.h"
-#include "ndcrash_backends.h"
+#include "ndcrash_unwinders.h"
 #include "ndcrash_dump.h"
 #include "ndcrash_private.h"
 #include "ndcrash_log.h"
@@ -191,7 +191,7 @@ void *ndcrash_out_daemon_function(void *arg) {
     return NULL;
 }
 
-enum ndcrash_error ndcrash_out_start_daemon(const enum ndcrash_backend backend, const char *log_file) {
+enum ndcrash_error ndcrash_out_start_daemon(const enum ndcrash_unwinder unwinder, const char *log_file) {
     if (ndcrash_out_daemon_context_instance) {
         return ndcrash_error_already_initialized;
     }
@@ -200,20 +200,20 @@ enum ndcrash_error ndcrash_out_start_daemon(const enum ndcrash_backend backend, 
     ndcrash_out_daemon_context_instance = (struct ndcrash_out_daemon_context *) malloc(sizeof(struct ndcrash_out_daemon_context));
     memset(ndcrash_out_daemon_context_instance, 0, sizeof(struct ndcrash_out_daemon_context));
 
-    // Checking if backend is supported. Setting unwind function.
-    switch (backend) {
+    // Checking if unwinder is supported. Setting unwind function.
+    switch (unwinder) {
 #ifdef ENABLE_LIBCORKSCREW
-        case ndcrash_backend_libcorkscrew:
+        case ndcrash_unwinder_libcorkscrew:
             ndcrash_out_daemon_context_instance->unwind_function = &ndcrash_out_unwind_libcorkscrew;
             break;
 #endif
 #ifdef ENABLE_LIBUNWIND
-        case ndcrash_backend_libunwind:
+        case ndcrash_unwinder_libunwind:
             ndcrash_out_daemon_context_instance->unwind_function = &ndcrash_out_unwind_libunwind;
             break;
 #endif
 #ifdef ENABLE_LIBUNWINDSTACK
-        case ndcrash_backend_libunwindstack:
+        case ndcrash_unwinder_libunwindstack:
             ndcrash_out_daemon_context_instance->unwind_function = &ndcrash_out_unwind_libunwindstack;
             break;
 #endif

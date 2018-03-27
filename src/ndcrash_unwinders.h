@@ -1,5 +1,5 @@
-#ifndef NDCRASH_BACKENDS_H
-#define NDCRASH_BACKENDS_H
+#ifndef NDCRASH_UNWINDERS_H
+#define NDCRASH_UNWINDERS_H
 #include "ndcrash_private.h"
 
 #ifdef __cplusplus
@@ -25,4 +25,4 @@ void ndcrash_out_unwind_libunwindstack(int outfile, struct ndcrash_out_message *
 #endif
 
 
-#endif //NDCRASH_BACKENDS_H
+#endif //NDCRASH_UNWINDERS_H

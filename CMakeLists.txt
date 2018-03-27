@@ -24,34 +24,34 @@ else()
 endif()
 
 if (${ENABLE_LIBCORKSCREW})
-    message(STATUS "Backend enabled: libcorkscrew")
+    message(STATUS "Unwinder enabled: libcorkscrew")
     add_definitions(-DENABLE_LIBCORKSCREW)
-    file(GLOB NDCRASH_BACKEND_SOURCES ${NDCRASH_SOURCE_ROOT}/backends/libcorkscrew/*.c)
-    list(APPEND NDCRASH_SOURCES ${NDCRASH_BACKEND_SOURCES})
+    file(GLOB NDCRASH_UNWINDER_SOURCES ${NDCRASH_SOURCE_ROOT}/unwinders/libcorkscrew/*.c)
+    list(APPEND NDCRASH_SOURCES ${NDCRASH_UNWINDER_SOURCES})
 
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/libcorkscrew-ndk/include)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/libcorkscrew-ndk/cmake)
     list(APPEND LINK_LIBRARIES corkscrew)
 else()
-    message(STATUS "Backend disabled: libcorkscrew")
+    message(STATUS "Unwinder disabled: libcorkscrew")
 endif()
 
 if (${ENABLE_LIBUNWIND})
-    message(STATUS "Backend enabled: libunwind")
+    message(STATUS "Unwinder enabled: libunwind")
     add_definitions(-DENABLE_LIBUNWIND)
 
     #Creating object library in order to pass additional defines for its sources.
-    file(GLOB NDCRASH_BACKEND_SOURCES ${NDCRASH_SOURCE_ROOT}/backends/libunwind/*.c)
-    add_library(unwindbackend OBJECT ${NDCRASH_BACKEND_SOURCES})
-    list(APPEND LIBUNWIND_BACKEND_DEFINES
+    file(GLOB NDCRASH_UNWINDER_SOURCES ${NDCRASH_SOURCE_ROOT}/unwinders/libunwind/*.c)
+    add_library(libunwindobjects OBJECT ${NDCRASH_UNWINDER_SOURCES})
+    list(APPEND LIBUNWIND_OBJECTS_DEFINES
         HAVE_CONFIG_H
         _GNU_SOURCE
     )
-    set_target_properties(unwindbackend
+    set_target_properties(libunwindobjects
         PROPERTIES
-        COMPILE_DEFINITIONS "${LIBUNWIND_BACKEND_DEFINES}"
+        COMPILE_DEFINITIONS "${LIBUNWIND_OBJECTS_DEFINES}"
     )
-    list(APPEND NDCRASH_SOURCES $<TARGET_OBJECTS:unwindbackend>)
+    list(APPEND NDCRASH_SOURCES $<TARGET_OBJECTS:libunwindobjects>)
 
     include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/external/libunwind-ndk/include
@@ -61,38 +61,38 @@ if (${ENABLE_LIBUNWIND})
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/libunwind-ndk/cmake)
     list(APPEND LINK_LIBRARIES unwind)
 else()
-    message(STATUS "Backend disabled: libunwind")
+    message(STATUS "Unwinder disabled: libunwind")
 endif()
 
 if (${ENABLE_LIBUNWINDSTACK})
-    message(STATUS "Backend enabled: libunwindstack")
+    message(STATUS "Unwinder enabled: libunwindstack")
     add_definitions(-DENABLE_LIBUNWINDSTACK)
-    file(GLOB NDCRASH_BACKEND_SOURCES ${NDCRASH_SOURCE_ROOT}/backends/libunwindstack/*.cpp)
-    list(APPEND NDCRASH_SOURCES ${NDCRASH_BACKEND_SOURCES})
+    file(GLOB NDCRASH_UNWINDER_SOURCES ${NDCRASH_SOURCE_ROOT}/unwinders/libunwindstack/*.cpp)
+    list(APPEND NDCRASH_SOURCES ${NDCRASH_UNWINDER_SOURCES})
 
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/libunwindstack-ndk/include)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/external/libunwindstack-ndk/cmake)
     list(APPEND LINK_LIBRARIES unwindstack)
 else()
-    message(STATUS "Backend disabled: libunwindstack")
+    message(STATUS "Unwinder disabled: libunwindstack")
 endif()
 
 if (${ENABLE_CXXABI})
-    message(STATUS "Backend enabled: cxxabi")
+    message(STATUS "Unwinder enabled: cxxabi")
     add_definitions(-DENABLE_CXXABI)
-    file(GLOB NDCRASH_BACKEND_SOURCES ${NDCRASH_SOURCE_ROOT}/backends/cxxabi/*.cpp)
-    list(APPEND NDCRASH_SOURCES ${NDCRASH_BACKEND_SOURCES})
+    file(GLOB NDCRASH_UNWINDER_SOURCES ${NDCRASH_SOURCE_ROOT}/unwinders/cxxabi/*.cpp)
+    list(APPEND NDCRASH_SOURCES ${NDCRASH_UNWINDER_SOURCES})
 else()
-    message(STATUS "Backend disabled: libunwindstack")
+    message(STATUS "Unwinder disabled: libunwindstack")
 endif()
 
 if (${ENABLE_STACKSCAN})
-    message(STATUS "Backend enabled: stackscan")
+    message(STATUS "Unwinder enabled: stackscan")
     add_definitions(-DENABLE_STACKSCAN)
-    file(GLOB NDCRASH_BACKEND_SOURCES ${NDCRASH_SOURCE_ROOT}/backends/stackscan/*.c)
-    list(APPEND NDCRASH_SOURCES ${NDCRASH_BACKEND_SOURCES})
+    file(GLOB NDCRASH_UNWINDER_SOURCES ${NDCRASH_SOURCE_ROOT}/unwinders/stackscan/*.c)
+    list(APPEND NDCRASH_SOURCES ${NDCRASH_UNWINDER_SOURCES})
 else()
-    message(STATUS "Backend disabled: libunwindstack")
+    message(STATUS "Unwinder disabled: libunwindstack")
 endif()
 
 add_library(ndcrash STATIC ${NDCRASH_SOURCES})

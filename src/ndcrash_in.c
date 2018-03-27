@@ -1,5 +1,5 @@
 #include "ndcrash.h"
-#include "ndcrash_backends.h"
+#include "ndcrash_unwinders.h"
 #include "ndcrash_dump.h"
 #include "ndcrash_private.h"
 #include "ndcrash_log.h"
@@ -64,37 +64,37 @@ void ndcrash_in_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoid
     }
 }
 
-enum ndcrash_error ndcrash_in_init(const enum ndcrash_backend backend, const char *log_file) {
+enum ndcrash_error ndcrash_in_init(const enum ndcrash_unwinder unwinder, const char *log_file) {
     if (ndcrash_in_context_instance) {
         return ndcrash_error_already_initialized;
     }
     ndcrash_in_context_instance = (struct ndcrash_in_context *) malloc(sizeof(struct ndcrash_in_context));
     memset(ndcrash_in_context_instance, 0, sizeof(struct ndcrash_in_context));
 
-    // Checking if backend is supported. Setting unwind function.
-    switch (backend) {
+    // Checking if unwinder is supported. Setting unwind function.
+    switch (unwinder) {
 #ifdef ENABLE_LIBCORKSCREW
-        case ndcrash_backend_libcorkscrew:
+        case ndcrash_unwinder_libcorkscrew:
             ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_libcorkscrew;
             break;
 #endif
 #ifdef ENABLE_LIBUNWIND
-        case ndcrash_backend_libunwind:
+        case ndcrash_unwinder_libunwind:
             ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_libunwind;
             break;
 #endif
 #ifdef ENABLE_LIBUNWINDSTACK
-        case ndcrash_backend_libunwindstack:
+        case ndcrash_unwinder_libunwindstack:
             ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_libunwindstack;
             break;
 #endif
 #ifdef ENABLE_CXXABI
-        case ndcrash_backend_cxxabi:
+        case ndcrash_unwinder_cxxabi:
             ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_cxxabi;
             break;
 #endif
 #ifdef ENABLE_STACKSCAN
-        case ndcrash_backend_stackscan:
+        case ndcrash_unwinder_stackscan:
             ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_stackscan;
             break;
 #endif

@@ -4,14 +4,14 @@
 #include <stdbool.h>
 
 /**
- * Enum representing supported backends for stack unwinding.
+ * Enum representing supported unwinders for stack unwinding.
  */
-enum ndcrash_backend {                      // Supported architectures
-    ndcrash_backend_libcorkscrew,           // Both
-    ndcrash_backend_libunwind,              // Both
-    ndcrash_backend_libunwindstack,         // Both
-    ndcrash_backend_cxxabi,                 // In-process
-    ndcrash_backend_stackscan,              // In-process
+enum ndcrash_unwinder {                      // Supported architectures
+    ndcrash_unwinder_libcorkscrew,           // Both
+    ndcrash_unwinder_libunwind,              // Both
+    ndcrash_unwinder_libunwindstack,         // Both
+    ndcrash_unwinder_cxxabi,                 // In-process
+    ndcrash_unwinder_stackscan,              // In-process
 };
 
 /**
@@ -29,11 +29,11 @@ enum ndcrash_error {
 /**
  * Initializes crash reporting library in in-process mode.
  *
- * @param backend What backend to use for unwinding.
+ * @param unwinder What unwinder to use for unwinding.
  * @param log_file Path to crash report file where to write it.
  * @return Initialization result.
  */
-enum ndcrash_error ndcrash_in_init(const enum ndcrash_backend backend, const char *log_file);
+enum ndcrash_error ndcrash_in_init(const enum ndcrash_unwinder unwinder, const char *log_file);
 
 /**
  * De-initialize crash reporting library in in-process mode.
@@ -57,11 +57,13 @@ void ndcrash_out_deinit();
  * saves a crash report to file. This method should be called from a separate process, for example,
  * background service that has android:process attribute.
  *
- * @param backend What backend to use for unwinding.
+ * @param unwinder What unwinder to use for unwinding.
  * @param log_file Path to crash report file where to write it.
  * @return Initialization result.
  */
-enum ndcrash_error ndcrash_out_start_daemon(const enum ndcrash_backend backend, const char *log_file);
+enum ndcrash_error ndcrash_out_start_daemon(
+        const enum ndcrash_unwinder unwinder,
+        const char *report_file);
 
 /**
  * Stops an unwinding daemon for out-of-process crash reporting.
