@@ -17,6 +17,11 @@ if (${ENABLE_OUTOFPROCESS})
     add_definitions(-DENABLE_OUTOFPROCESS)
 endif()
 
+if (DEFINED SOCKET_NAME)
+    add_definitions(-DSOCKET_NAME=${SOCKET_NAME})
+else()
+    message(FATAL_ERROR "SOCKET_NAME argument MUST be defined.")
+endif()
 
 if (${ENABLE_LIBCORKSCREW})
     message(STATUS "Backend enabled: libcorkscrew")

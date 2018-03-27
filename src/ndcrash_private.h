@@ -43,8 +43,14 @@ typedef void (*ndcrash_in_unwind_func_ptr)(int outfile, struct ucontext *context
  */
 typedef void (*ndcrash_out_unwind_func_ptr)(int outfile, struct ndcrash_out_message *message);
 
+#define NDCRASH_TOSTRING(arg) #arg
+
+#ifndef SOCKET_NAME
+#error SOCKET_NAME macro MUST be defined.
+#endif
+
 /// Socket for out-of-process architecture communication.
-static const char SOCKET_NAME[] = "ru.ivanarh.ndcrash.socket";
+static const char NDCRASH_SOCKET_NAME[] = NDCRASH_TOSTRING(SOCKET_NAME);
 
 /// This macro allows us to configure maximum lines count in backtrace.
 #ifndef NDCRASH_MAX_FRAMES

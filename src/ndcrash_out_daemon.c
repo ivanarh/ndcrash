@@ -137,14 +137,14 @@ void *ndcrash_out_daemon_function(void *arg) {
     }
 
     // Discarding terminating \0 char.
-    const size_t socket_name_size = sizeofa(SOCKET_NAME) - 1;
+    const size_t socket_name_size = sizeofa(NDCRASH_SOCKET_NAME) - 1;
 
     // Binding to an address.
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = PF_LOCAL;
     addr.sun_path[0] = 0;
-    memcpy(addr.sun_path + 1, SOCKET_NAME, socket_name_size);
+    memcpy(addr.sun_path + 1, NDCRASH_SOCKET_NAME, socket_name_size);
     int addrlen = sizeof(sa_family_t) + 1 + socket_name_size;
     if (bind(listensock, (struct sockaddr *)&addr, addrlen) < 0) {
         NDCRASHLOG(ERROR,"Couldn't bind socket, error: %s (%d)", strerror(errno), errno);

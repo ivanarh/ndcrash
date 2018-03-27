@@ -55,14 +55,14 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
     }
 
     // Discarding terminating \0 char.
-    const size_t socket_name_size = sizeofa(SOCKET_NAME) - 1;
+    const size_t socket_name_size = sizeofa(NDCRASH_SOCKET_NAME) - 1;
 
     // Setting socket address.
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = PF_LOCAL;
     addr.sun_path[0] = 0;
-    memcpy(addr.sun_path + 1, SOCKET_NAME, socket_name_size); //Discarding terminating \0 char.
+    memcpy(addr.sun_path + 1, NDCRASH_SOCKET_NAME, socket_name_size); //Discarding terminating \0 char.
 
     // Connecting.
     if (connect(sock, (struct sockaddr *)&addr, sizeof(addr.sun_family) + 1 + socket_name_size)) {
