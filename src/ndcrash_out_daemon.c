@@ -29,6 +29,14 @@ struct ndcrash_out_daemon_context {
 
     /// Daemon thread.
     pthread_t daemon_thread;
+
+    /// Daemon lifecycle callbacks. See docs for ndcrash_out_start_daemon.
+    ndcrash_daemon_start_stop_callback start_callback;
+    ndcrash_daemon_crash_callback crash_callback;
+    ndcrash_daemon_start_stop_callback stop_callback;
+
+    /// Argument for daemon lifecycle callbacks. Passed to initialization function.
+    void *callback_arg;
 };
 
 /// Global instance of out-of-process daemon context.
@@ -37,7 +45,7 @@ struct ndcrash_out_daemon_context *ndcrash_out_daemon_context_instance = NULL;
 /// Constant for listening socket backlog argument.
 static const int SOCKET_BACKLOG = 1;
 
-void ndcrash_out_daemon_do_unwinding(struct ndcrash_out_message *message) {
+static void ndcrash_out_daemon_do_unwinding(struct ndcrash_out_message *message) {
     const bool attached = ptrace(PTRACE_ATTACH, message->tid, NULL, NULL) != -1;
     if (!attached) {
         NDCRASHLOG(INFO, "Ptrace attach failed");
@@ -77,13 +85,21 @@ void ndcrash_out_daemon_do_unwinding(struct ndcrash_out_message *message) {
         if (outfile >= 0) {
             //Closing file
             close(outfile);
+
+            // Running successful unwinding callback if it's set.
+            if (ndcrash_out_daemon_context_instance->crash_callback) {
+                ndcrash_out_daemon_context_instance->crash_callback(
+                        ndcrash_out_daemon_context_instance->log_file,
+                        ndcrash_out_daemon_context_instance->callback_arg
+                );
+            }
         }
     }
 
     ptrace(PTRACE_DETACH, message->tid, NULL, NULL);
 }
 
-void ndcrash_out_daemon_process_client(int clientsock)
+static void ndcrash_out_daemon_process_client(int clientsock)
 {
     struct ndcrash_out_message message = { 0, 0 };
     ssize_t overall_read = 0;
@@ -122,7 +138,7 @@ void ndcrash_out_daemon_process_client(int clientsock)
     close(clientsock);
 }
 
-void *ndcrash_out_daemon_function(void *arg) {
+static void * ndcrash_out_daemon_function(void *arg) {
     // Creating socket
     const int listensock = socket(PF_LOCAL, SOCK_STREAM, 0);
     if (listensock < 0) {
@@ -159,6 +175,10 @@ void *ndcrash_out_daemon_function(void *arg) {
 
     NDCRASHLOG(INFO, "Daemon is successfuly started, accepting connections...");
 
+    if (ndcrash_out_daemon_context_instance->start_callback) {
+        ndcrash_out_daemon_context_instance->start_callback(ndcrash_out_daemon_context_instance->callback_arg);
+    }
+
     // Accepting connections in a cycle.
     for (;;) {
         fd_set fdset;
@@ -188,10 +208,21 @@ void *ndcrash_out_daemon_function(void *arg) {
         ndcrash_out_daemon_process_client(clientsock);
     }
 
+    if (ndcrash_out_daemon_context_instance->stop_callback) {
+        ndcrash_out_daemon_context_instance->stop_callback(ndcrash_out_daemon_context_instance->callback_arg);
+    }
+
     return NULL;
 }
 
-enum ndcrash_error ndcrash_out_start_daemon(const enum ndcrash_unwinder unwinder, const char *log_file) {
+enum ndcrash_error ndcrash_out_start_daemon(
+        const enum ndcrash_unwinder unwinder,
+        const char *log_file,
+        ndcrash_daemon_start_stop_callback start_callback,
+        ndcrash_daemon_crash_callback crash_callback,
+        ndcrash_daemon_start_stop_callback stop_callback,
+        void *callback_arg) {
+
     if (ndcrash_out_daemon_context_instance) {
         return ndcrash_error_already_initialized;
     }
@@ -199,6 +230,10 @@ enum ndcrash_error ndcrash_out_start_daemon(const enum ndcrash_unwinder unwinder
     // Creating a new struct instance.
     ndcrash_out_daemon_context_instance = (struct ndcrash_out_daemon_context *) malloc(sizeof(struct ndcrash_out_daemon_context));
     memset(ndcrash_out_daemon_context_instance, 0, sizeof(struct ndcrash_out_daemon_context));
+    ndcrash_out_daemon_context_instance->start_callback = start_callback;
+    ndcrash_out_daemon_context_instance->crash_callback = crash_callback;
+    ndcrash_out_daemon_context_instance->stop_callback = stop_callback;
+    ndcrash_out_daemon_context_instance->callback_arg = callback_arg;
 
     // Checking if unwinder is supported. Setting unwind function.
     switch (unwinder) {
@@ -265,6 +300,11 @@ bool ndcrash_out_stop_daemon() {
     free(ndcrash_out_daemon_context_instance);
     ndcrash_out_daemon_context_instance = NULL;
     return true;
+}
+
+void * ndcrash_out_get_daemon_callbacks_arg() {
+    if (!ndcrash_out_daemon_context_instance) return NULL;
+    return ndcrash_out_daemon_context_instance->callback_arg;
 }
 
 #endif //ENABLE_OUTOFPROCESS
