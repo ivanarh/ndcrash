@@ -74,18 +74,18 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
     }
 
     // Sending.
-    const ssize_t sent = send(sock, &msg, sizeof(msg), 0);
+    const ssize_t sent = send(sock, &msg, sizeof(msg), MSG_NOSIGNAL);
     if (sent < 0) {
         NDCRASHLOG(ERROR,"Send error: %s (%d)", strerror(errno), errno);
     } else if (sent != sizeof(msg)) {
-        NDCRASHLOG(ERROR,"Error: couldn't send whole message, sent bytes: %d, message size: %d", sent, (int)sizeof(msg));
+        NDCRASHLOG(ERROR,"Error: couldn't send whole message, sent bytes: %d, message size: %d", (int)sent, (int)sizeof(msg));
     } else {
         NDCRASHLOG(INFO, "Successfuly sent data to crash service.");
     }
 
     // Blocking read.
     char c = 0;
-    if (recv(sock, &c, 1, 0) < 0) {
+    if (recv(sock, &c, 1, MSG_NOSIGNAL) < 0) {
         NDCRASHLOG(ERROR,"Recv error: %s (%d)", strerror(errno), errno);
     }
 

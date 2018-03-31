@@ -178,7 +178,7 @@ bool ndcrash_register_signal_handler(ndcrash_signal_handler_function handler, st
     return true;
 }
 
-bool ndcrash_unregister_signal_handler(struct sigaction old_handlers[NSIG]) {
+void ndcrash_unregister_signal_handler(struct sigaction old_handlers[NSIG]) {
     for (int signo = 0; signo < NSIG; ++signo) {
         const struct sigaction *old_handler = &old_handlers[signo];
         if (!old_handler->sa_handler) continue;

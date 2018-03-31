@@ -37,7 +37,7 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
     unw_map_local_create();
 
     // Cursor - the main structure used for unwinding with a huge size. Allocating on stack is undesirable
-    // due to limited alternate stack size. malloc isn't signal safe. Using libunwind memory pools.
+    // due to limited alternate signal stack size. malloc isn't signal safe. Using libunwind memory pools.
     struct mempool cursor_pool;
     mempool_init(&cursor_pool, sizeof(unw_cursor_t), 0);
     unw_cursor_t * const unw_cursor = mempool_alloc(&cursor_pool);
@@ -60,7 +60,7 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
             // Looking for a function name.
             unw_word_t func_offset;
             const bool func_name_found = unw_get_proc_name(
-                    unw_cursor, unw_function_name, sizeofa(unw_function_name), &func_offset) > 0;
+                    unw_cursor, unw_function_name, sizeof(unw_function_name), &func_offset) > 0;
 
             // Looking for a object (shared library) where a function is located.
             unw_map_cursor_t proc_map_cursor;
@@ -82,7 +82,7 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
                     regip, // Relative if maps is found
                     maps_found ? proc_map_item.path : NULL,
                     func_name_found ? unw_function_name : NULL,
-                    (int) func_offset);
+                    func_offset);
 
             // Trying to switch to a previous stack frame.
             if (unw_step(unw_cursor) <= 0) break;
@@ -101,45 +101,59 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
 
 #ifdef ENABLE_OUTOFPROCESS
 
+/**
+ * Structure that we use as "void *arg" parameter for accessor callbacks.
+ */
 struct ndcrash_out_libunwind_as_arg {
+
+    /// Pointer to _UPT callbacks argument that they originally use. A result of _UPT_create.
     void *upt_info;
+
+    /// Processor context in the moment of crash. We use it to implement or own access_reg callback.
     unw_context_t unw_ctx;
 };
 
-static int ndcrash_out_libunwind_find_proc_info(unw_addr_space_t as, unw_word_t ip, unw_proc_info_t *pi,
-                                         int need_unwind_info, void *arg) {
-    const unw_accessors_t old_acc = as->acc;
+/// Forward declaration.
+extern unw_accessors_t ndcrash_libunwind_accessors;
+
+static int ndcrash_out_libunwind_find_proc_info(unw_addr_space_t as, unw_word_t ip, unw_proc_info_t *pi, int need_unwind_info, void *arg) {
+    /* NOTE: For this and functions where we wrap _UPT callback we need to set .acc field to _UPT_accessors
+     * while _UPT callback is being run. This is because _UPT callback may run another callback from .acc
+     * structure. If we didn't do this our accessor will be run with a pointer to upt_info, not to
+     * ndcrash_out_libunwind_as_arg and it will cause incorrect work. */
     as->acc = _UPT_accessors;
     const int result = _UPT_find_proc_info(as, ip, pi, need_unwind_info, ((struct ndcrash_out_libunwind_as_arg *) arg)->upt_info);
-    as->acc = old_acc;
+    as->acc = ndcrash_libunwind_accessors;
     return result;
 }
 
 static void ndcrash_out_libunwind_put_unwind_info(unw_addr_space_t as, unw_proc_info_t *pi, void *arg) {
-    const unw_accessors_t old_acc = as->acc;
     as->acc = _UPT_accessors;
     _UPT_put_unwind_info(as, pi, ((struct ndcrash_out_libunwind_as_arg *) arg)->upt_info);
-    as->acc = old_acc;
+    as->acc = ndcrash_libunwind_accessors;
 }
 
 static int ndcrash_out_libunwind_get_dyn_info_list_addr(unw_addr_space_t as, unw_word_t *dil_addr, void *arg) {
-    const unw_accessors_t old_acc = as->acc;
     as->acc = _UPT_accessors;
     const int result = _UPT_get_dyn_info_list_addr(as, dil_addr, ((struct ndcrash_out_libunwind_as_arg *) arg)->upt_info);
-    as->acc = old_acc;
+    as->acc = ndcrash_libunwind_accessors;
     return result;
 }
 
 static int ndcrash_out_libunwind_access_mem(unw_addr_space_t as, unw_word_t addr, unw_word_t *val, int write, void *arg) {
-    const unw_accessors_t old_acc = as->acc;
     as->acc = _UPT_accessors;
     const int result = _UPT_access_mem(as, addr, val, write, ((struct ndcrash_out_libunwind_as_arg *) arg)->upt_info);
-    as->acc = old_acc;
+    as->acc = ndcrash_libunwind_accessors;
     return result;
 }
 
-
-static inline void *ndcrash_out_libunwind_uc_addr(unw_tdep_context_t *uc, int reg) {
+/**
+ * Retrieves a pointer to register within passed unw_tdep_context_t by register number.
+ * @param uc Pointer to unw_tdep_context_t containing a register to access.
+ * @param reg Register number, from 0.
+ * @return Pointer to register.
+ */
+static inline void *ndcrash_out_libunwind_uc_addr(unw_tdep_context_t *uc, unw_regnum_t reg) {
 #ifdef __arm__
     if (reg >= UNW_ARM_R0 && reg < UNW_ARM_R0 + 16) {
         return &uc->regs[reg - UNW_ARM_R0];
@@ -220,41 +234,44 @@ badreg:
 }
 
 static int ndcrash_out_libunwind_access_fpreg(unw_addr_space_t as, unw_regnum_t reg, unw_fpreg_t *val, int write, void *arg) {
-    const unw_accessors_t old_acc = as->acc;
     as->acc = _UPT_accessors;
     const int result = _UPT_access_fpreg(as, reg, val, write, ((struct ndcrash_out_libunwind_as_arg *) arg)->upt_info);
-    as->acc = old_acc;
+    as->acc = ndcrash_libunwind_accessors;
     return result;
 }
 
 static int ndcrash_out_libunwind_get_proc_name(unw_addr_space_t as, unw_word_t ip, char *buf, size_t buf_len, unw_word_t *offp, void *arg) {
-    const unw_accessors_t old_acc = as->acc;
     as->acc = _UPT_accessors;
     const int result = _UPT_get_proc_name(as, ip, buf, buf_len, offp, ((struct ndcrash_out_libunwind_as_arg *) arg)->upt_info);
-    as->acc = old_acc;
+    as->acc = ndcrash_libunwind_accessors;
     return result;
 }
 
 static int ndcrash_out_libunwind_resume(unw_addr_space_t as, unw_cursor_t *c, void *arg) {
-    const unw_accessors_t old_acc = as->acc;
     as->acc = _UPT_accessors;
     const int result = _UPT_resume(as, c, ((struct ndcrash_out_libunwind_as_arg *) arg)->upt_info);
-    as->acc = old_acc;
+    as->acc = ndcrash_libunwind_accessors;
     return result;
 }
 
-void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *message) {
-    unw_accessors_t accessors;
-    accessors.find_proc_info = ndcrash_out_libunwind_find_proc_info;
-    accessors.put_unwind_info = ndcrash_out_libunwind_put_unwind_info;
-    accessors.get_dyn_info_list_addr = ndcrash_out_libunwind_get_dyn_info_list_addr;
-    accessors.access_mem = ndcrash_out_libunwind_access_mem;
-    accessors.access_reg = ndcrash_out_libunwind_access_reg;
-    accessors.access_fpreg = ndcrash_out_libunwind_access_fpreg;
-    accessors.get_proc_name = ndcrash_out_libunwind_get_proc_name;
-    accessors.resume = ndcrash_out_libunwind_resume;
+/**
+ * Accessors that we use to access to remote process. This is a wrapper around _UPT accessors with
+ * one exclusion: we override .access_reg function to access registers passed by socket in
+ * ndcrash_out_message, we don't obtain them using ptrace.
+ */
+unw_accessors_t ndcrash_libunwind_accessors = {
+        .find_proc_info = ndcrash_out_libunwind_find_proc_info,
+        .put_unwind_info = ndcrash_out_libunwind_put_unwind_info,
+        .get_dyn_info_list_addr = ndcrash_out_libunwind_get_dyn_info_list_addr,
+        .access_mem = ndcrash_out_libunwind_access_mem,
+        .access_reg = ndcrash_out_libunwind_access_reg,
+        .access_fpreg = ndcrash_out_libunwind_access_fpreg,
+        .get_proc_name = ndcrash_out_libunwind_get_proc_name,
+        .resume = ndcrash_out_libunwind_resume
+};
 
-    const unw_addr_space_t addr_space = unw_create_addr_space(&accessors, 0);
+void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *message) {
+    const unw_addr_space_t addr_space = unw_create_addr_space(&ndcrash_libunwind_accessors, 0);
     if (addr_space) {
         unw_map_cursor_t proc_map_cursor;
         if (!unw_map_cursor_create(&proc_map_cursor, message->tid)) {
@@ -308,22 +325,22 @@ void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *messa
                         if (unw_step(&unw_cursor) <= 0) break;
                     }
                 } else {
-                    NDCRASHLOG(ERROR, "Failed to initialize libunwind.");
+                    NDCRASHLOG(ERROR, "libunwind: Failed to initialize a cursor.");
                 }
                 _UPT_destroy(ndcrash_as_arg.upt_info);
             } else {
-                NDCRASHLOG(ERROR, "Failed to create upt.");
+                NDCRASHLOG(ERROR, "libunwind: Failed to create upt.");
             }
             unw_map_cursor_destroy(&proc_map_cursor);
         } else {
-            NDCRASHLOG(ERROR, "Call unw_map_cursor_create failed.");
+            NDCRASHLOG(ERROR, "libunwind: Call unw_map_cursor_create failed.");
         }
         // Remove the map from the address space before destroying it.
         // It will be freed in the UnwindMap destructor.
         unw_map_set(addr_space, NULL);
         unw_destroy_addr_space(addr_space);
     } else {
-        NDCRASHLOG(ERROR, "Failed to create addr space.");
+        NDCRASHLOG(ERROR, "libunwind: Failed to create addr space.");
     }
 }
 

@@ -68,7 +68,7 @@ static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *c
                     (intptr_t)rel_pc,
                     map_info->name.c_str(),
                     unw_function_name.c_str(),
-                    (int)func_offset);
+                    (intptr_t) func_offset);
         } else {
             unw_function_name.clear();
             ndcrash_dump_backtrace_line(

@@ -4,6 +4,7 @@
 #include <android/log.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/socket.h>
 
 bool ndcrash_set_nonblock(int fd) {
     int socket_flags = fcntl(fd, F_GETFL);
@@ -18,7 +19,4 @@ bool ndcrash_set_nonblock(int fd) {
         return false;
     }
     return true;
-}
-
-bool ndcrash_set_nosignal(int socket) {
 }

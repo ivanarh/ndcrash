@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/system_properties.h>
 
 #if __LP64__
 #define PRIPTR "016" PRIxPTR
@@ -95,8 +96,14 @@ void ndcrash_dump_write_line(int fd, const char *format, ...) {
 void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_code, void *faultaddr,
                          struct ucontext *context) {
     ndcrash_dump_write_line(outfile, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***");
-    ndcrash_dump_write_line(outfile, "Build fingerprint: ''");
-    ndcrash_dump_write_line(outfile, "Revision: '0'");
+    {
+        char prop_buffer[PROP_VALUE_MAX];
+        __system_property_get("ro.build.fingerprint", prop_buffer);
+        ndcrash_dump_write_line(outfile, "Build fingerprint: %s", prop_buffer);
+        __system_property_get("ro.revision", prop_buffer);
+        ndcrash_dump_write_line(outfile, "Revision: '0'");
+    }
+
 #ifdef __arm__
     ndcrash_dump_write_line(outfile, "ABI: 'arm'");
 #elif defined(__aarch64__)
@@ -106,6 +113,7 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
 #elif defined(__x86_64__)
     ndcrash_dump_write_line(outfile, "ABI: 'x86_64'");
 #endif
+
     {
         // Buffer used for file path formatting.
         char proc_file_path[32];
@@ -225,7 +233,7 @@ void ndcrash_dump_backtrace_line(
         intptr_t pc,
         const char *map_name,
         const char *func_name,
-        int func_offset) {
+        intptr_t func_offset) {
     if (!map_name) {
         map_name = "<unknown>";
     } else if (!*map_name) {
@@ -246,7 +254,7 @@ void ndcrash_dump_backtrace_line(
                 pc,
                 map_name,
                 func_name,
-                func_offset
+                (int)func_offset
         );
 
     }

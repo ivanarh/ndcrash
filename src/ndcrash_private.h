@@ -22,10 +22,22 @@ static const int NUM_SIGNALS_TO_CATCH = sizeofa(SIGNALS_TO_CATCH);
 /// Struct for message that is sent from signal handler to daemon in out-of-process architecture.
 struct ndcrash_out_message
 {
+    /// Identifier of crashed process (Linux thread group id)
     pid_t pid;
+
+    /// Identifier of crashed thread.
     pid_t tid;
-    int signo, si_code;
+
+    /// Number of signal that was received on crash.
+    int signo;
+
+    /// si_code value from siginfo structure which is passed to signal handler.
+    int si_code;
+
+    /// si_addr field from siginfo structure which is passed to signal handler.
     void *faultaddr;
+
+    /// Processor context value in moment of crash. 3rd argument of a signal handler.
     struct ucontext context;
 };
 

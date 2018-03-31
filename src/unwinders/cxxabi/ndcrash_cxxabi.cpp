@@ -3,44 +3,61 @@
 #include "ndcrash_private.h"
 #include <unwind.h>
 #include <dlfcn.h>
-
-enum {
-    MAX_DEPTH = 64
-};
+#include <string.h>
 
 #ifdef ENABLE_INPROCESS
 
+/**
+ * We use this struct as a callback for unwinding function.
+ */
 typedef struct {
+
+    /// Output file descriptor for a crash dump.
     int outfile;
-    int frameno;
+
+    /// Real frame number, incremented when each frame have been unwound.
+    int real_frame_no;
+
+    /// A frame number to add to log. Incremented when we add a frame to backtrace.
+    int log_frame_no;
+
 } ndcrash_cxxabi_unwind_data;
 
 extern "C" {
 
-_Unwind_Reason_Code callback(struct _Unwind_Context *context, void *data) {
+static _Unwind_Reason_Code ndcrash_in_cxxabi_callback(struct _Unwind_Context *context, void *data) {
     ndcrash_cxxabi_unwind_data * const ud = (ndcrash_cxxabi_unwind_data *) data;
-    const uintptr_t pc = _Unwind_GetIP(context);
-    Dl_info info;
-    if (pc && dladdr((void *) pc, &info)) {
-        ndcrash_dump_backtrace_line(
-                ud->outfile,
-                ud->frameno,
-                (intptr_t) pc - (intptr_t) info.dli_fbase,
-                info.dli_fname,
-                info.dli_sname,
-                (intptr_t) pc - (intptr_t) info.dli_saddr
-        );
-    } else {
-        ndcrash_dump_backtrace_line(ud->outfile, ud->frameno, pc, NULL, NULL, 0);
+    // We always skip first 2 frames because they are always ndcrash functions:
+    // ndcrash_in_signal_handler and ndcrash_in_unwind_cxxabi.
+    if (ud->real_frame_no > 2) {
+        const uintptr_t pc = _Unwind_GetIP(context);
+        Dl_info info;
+        if (pc && dladdr((void *) pc, &info)) {
+
+            // Writing a line to backtrace.
+            ndcrash_dump_backtrace_line(
+                    ud->outfile,
+                    ud->log_frame_no,
+                    (intptr_t) pc - (intptr_t) info.dli_fbase,
+                    info.dli_fname,
+                    info.dli_sname,
+                    (intptr_t) pc - (intptr_t) info.dli_saddr
+            );
+        } else {
+            ndcrash_dump_backtrace_line(ud->outfile, ud->log_frame_no, pc, NULL, NULL, 0);
+        }
+        ++ud->log_frame_no;
     }
-    return ++ud->frameno >= MAX_DEPTH ? _URC_END_OF_STACK : _URC_NO_REASON;
+
+    ++ud->real_frame_no;
+    return ud->log_frame_no >= NDCRASH_MAX_FRAMES ? _URC_END_OF_STACK : _URC_NO_REASON;
 }
 
 void ndcrash_in_unwind_cxxabi(int outfile, struct ucontext *context) {
     ndcrash_cxxabi_unwind_data unwdata;
-    unwdata.frameno = 0;
+    unwdata.real_frame_no = unwdata.log_frame_no = 0;
     unwdata.outfile = outfile;
-    _Unwind_Backtrace(callback, &unwdata);
+    _Unwind_Backtrace(ndcrash_in_cxxabi_callback, &unwdata);
 }
 
 } //extern "C"

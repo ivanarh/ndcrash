@@ -54,7 +54,7 @@ void ndcrash_dump_backtrace_line(
         intptr_t pc,
         const char *map_name,
         const char *func_name,
-        int func_offset);
+        intptr_t func_offset);
 
 #ifdef __cplusplus
 }

@@ -121,7 +121,11 @@ static void ndcrash_out_daemon_process_client(int clientsock)
             close(clientsock);
             return;
         }
-        const int bytes_read = recv(clientsock, (char *)&message + overall_read, sizeof(struct ndcrash_out_message) - overall_read, 0);
+        const ssize_t bytes_read = recv(
+                clientsock,
+                (char *)&message + overall_read,
+                sizeof(struct ndcrash_out_message) - overall_read,
+                MSG_NOSIGNAL);
         if (bytes_read < 0) {
             NDCRASHLOG(ERROR,"Recv error: %s (%d)", strerror(errno), errno);
             close(clientsock);
