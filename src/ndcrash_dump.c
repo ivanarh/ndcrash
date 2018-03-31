@@ -99,10 +99,13 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
     ndcrash_dump_write_line(outfile, "Revision: '0'");
 #ifdef __arm__
     ndcrash_dump_write_line(outfile, "ABI: 'arm'");
+#elif defined(__aarch64__)
+    ndcrash_dump_write_line(outfile, "ABI: 'arm64'");
 #elif defined(__i386__)
     ndcrash_dump_write_line(outfile, "ABI: 'x86'");
+#elif defined(__x86_64__)
+    ndcrash_dump_write_line(outfile, "ABI: 'x86_64'");
 #endif
-
     {
         // Buffer used for file path formatting.
         char proc_file_path[32];
@@ -160,6 +163,28 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
                             ctx->arm_r8, ctx->arm_r9, ctx->arm_r10, ctx->arm_fp);
     ndcrash_dump_write_line(outfile, "    ip %08x  sp %08x  lr %08x  pc %08x  cpsr %08x",
                             ctx->arm_ip, ctx->arm_sp, ctx->arm_lr, ctx->arm_pc, ctx->arm_cpsr);
+#elif defined(__aarch64__)
+    for (int i = 0; i < 28; i += 4) {
+        ndcrash_dump_write_line(
+                outfile,
+                "    x%-2d  %016llx  x%-2d  %016llx  x%-2d  %016llx  x%-2d  %016llx",
+                i, ctx->regs[i],
+                i+1, ctx->regs[i+1],
+                i+2, ctx->regs[i+2],
+                i+3, ctx->regs[i+3]);
+    }
+    ndcrash_dump_write_line(
+            outfile,
+            "    x28  %016llx  x29  %016llx  x30  %016llx",
+            ctx->regs[28],
+            ctx->regs[29],
+            ctx->regs[30]);
+    ndcrash_dump_write_line(
+            outfile,
+            "    sp   %016llx  pc   %016llx  pstate %016llx",
+            ctx->sp,
+            ctx->pc,
+            ctx->pstate);
 #elif defined(__i386__)
     ndcrash_dump_write_line(outfile, "    eax %08lx  ebx %08lx  ecx %08lx  edx %08lx",
             ctx->gregs[REG_EAX], ctx->gregs[REG_EBX], ctx->gregs[REG_ECX], ctx->gregs[REG_EDX]);

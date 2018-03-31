@@ -13,6 +13,8 @@
 static uintptr_t ndcrash_pc_from_ucontext(const ucontext_t *uc) {
 #if defined(__arm__)
     return uc->uc_mcontext.arm_pc;
+#elif defined(__aarch64__)
+    return uc->uc_mcontext.pc;
 #elif defined(__i386__)
     return uc->uc_mcontext.gregs[REG_EIP];
 #elif defined(__x86_64__)
@@ -23,6 +25,8 @@ static uintptr_t ndcrash_pc_from_ucontext(const ucontext_t *uc) {
 static uintptr_t ndcrash_sp_from_ucontext(const ucontext_t *uc) {
 #if defined(__arm__)
     return uc->uc_mcontext.arm_sp;
+#elif defined(__aarch64__)
+    return uc->uc_mcontext.sp;
 #elif defined(__i386__)
     return uc->uc_mcontext.gregs[REG_ESP];
 #elif defined(__x86_64__)
@@ -40,6 +44,8 @@ static uintptr_t ndcrash_rewind_pc(uintptr_t pc) {
         }
     }
     return pc - 4;
+#elif defined(__aarch64__)
+    return pc < 4 ? pc : pc - 4;
 #elif defined(__i386__) || defined(__x86_64__)
     return pc - 1;
 #endif
@@ -57,7 +63,7 @@ static void ndcrash_try_unwind_frame(uintptr_t pc, int outfile, int *frameno, bo
                  (uintptr_t)pc - (uintptr_t)info.dli_fbase,
                  info.dli_fname,
                  info.dli_sname, // May be null.
-                 (uintptr_t)pc - (uintptr_t)info.dli_saddr
+                (int)(pc - (uintptr_t)info.dli_saddr)
         );
         ++(*frameno);
     }

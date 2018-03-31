@@ -25,7 +25,7 @@ void ndcrash_in_unwind_libunwind_get_context(struct ucontext *context, unw_conte
 #if defined(__arm__)
     struct sigcontext *sig_ctx = &context->uc_mcontext;
     memcpy(unw_ctx->regs, &sig_ctx->arm_r0, sizeof(unw_ctx->regs));
-#elif defined(__i386__) || defined(__x86_64__)
+#elif defined(__i386__) || defined(__x86_64__) || defined(__aarch64__)
     *unw_ctx = *context;
 #else
 #error Architecture is not supported.
@@ -143,6 +143,12 @@ static inline void *ndcrash_out_libunwind_uc_addr(unw_tdep_context_t *uc, int re
 #ifdef __arm__
     if (reg >= UNW_ARM_R0 && reg < UNW_ARM_R0 + 16) {
         return &uc->regs[reg - UNW_ARM_R0];
+    } else {
+        return NULL;
+    }
+#elif defined(__aarch64__)
+    if (reg >= UNW_AARCH64_X0 && reg <= UNW_AARCH64_V31) {
+        return &uc->uc_mcontext.regs[reg];
     } else {
         return NULL;
     }
