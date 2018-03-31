@@ -1,6 +1,7 @@
 #include "ndcrash_signal_utils.h"
 #include "ndcrash_private.h"
 #include <signal.h>
+#include <string.h>
 
 bool ndcrash_signal_has_si_addr(int si_signo, int si_code) {
     if (si_code == SI_USER || si_code == SI_QUEUE || si_code == SI_TKILL) {

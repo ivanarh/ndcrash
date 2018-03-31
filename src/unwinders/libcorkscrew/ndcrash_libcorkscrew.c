@@ -4,6 +4,8 @@
 #include <corkscrew/backtrace.h>
 #include <corkscrew/backtrace-arch.h>
 
+#if defined(__arm__) || defined(__i386__)
+
 /**
  * We limit count of frames by 32 for in-process mode because we have a very limited stack size.
  */
@@ -74,4 +76,8 @@ void ndcrash_out_unwind_libcorkscrew(int outfile, struct ndcrash_out_message *me
     free_ptrace_context(ptrace_context);
 }
 
+#endif //ENABLE_OUTOFPROCESS
+
+#else //defined(__arm__) || defined(__i386__)
+#error Architecture is not supported, libcorkscrew supports only arm and x86.
 #endif

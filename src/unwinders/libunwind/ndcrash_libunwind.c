@@ -25,8 +25,8 @@ void ndcrash_in_unwind_libunwind_get_context(struct ucontext *context, unw_conte
 #if defined(__arm__)
     struct sigcontext *sig_ctx = &context->uc_mcontext;
     memcpy(unw_ctx->regs, &sig_ctx->arm_r0, sizeof(unw_ctx->regs));
-#elif defined(__i386__)
-    *unw_ctx = *((unw_context_t*)context);
+#elif defined(__i386__) || defined(__x86_64__)
+    *unw_ctx = *context;
 #else
 #error Architecture is not supported.
 #endif
@@ -82,7 +82,7 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
                     regip, // Relative if maps is found
                     maps_found ? proc_map_item.path : NULL,
                     func_name_found ? unw_function_name : NULL,
-                    func_offset);
+                    (int) func_offset);
 
             // Trying to switch to a previous stack frame.
             if (unw_step(unw_cursor) <= 0) break;
@@ -146,29 +146,55 @@ static inline void *ndcrash_out_libunwind_uc_addr(unw_tdep_context_t *uc, int re
     } else {
         return NULL;
     }
-#else if defined(__i386__)
+#elif defined(__i386__)
     void *addr;
     switch (reg) {
-    case UNW_X86_GS:  addr = &uc->uc_mcontext.gregs[REG_GS]; break;
-    case UNW_X86_FS:  addr = &uc->uc_mcontext.gregs[REG_FS]; break;
-    case UNW_X86_ES:  addr = &uc->uc_mcontext.gregs[REG_ES]; break;
-    case UNW_X86_DS:  addr = &uc->uc_mcontext.gregs[REG_DS]; break;
-    case UNW_X86_EAX: addr = &uc->uc_mcontext.gregs[REG_EAX]; break;
-    case UNW_X86_EBX: addr = &uc->uc_mcontext.gregs[REG_EBX]; break;
-    case UNW_X86_ECX: addr = &uc->uc_mcontext.gregs[REG_ECX]; break;
-    case UNW_X86_EDX: addr = &uc->uc_mcontext.gregs[REG_EDX]; break;
-    case UNW_X86_ESI: addr = &uc->uc_mcontext.gregs[REG_ESI]; break;
-    case UNW_X86_EDI: addr = &uc->uc_mcontext.gregs[REG_EDI]; break;
-    case UNW_X86_EBP: addr = &uc->uc_mcontext.gregs[REG_EBP]; break;
-    case UNW_X86_EIP: addr = &uc->uc_mcontext.gregs[REG_EIP]; break;
-    case UNW_X86_ESP: addr = &uc->uc_mcontext.gregs[REG_ESP]; break;
-    case UNW_X86_TRAPNO:  addr = &uc->uc_mcontext.gregs[REG_TRAPNO]; break;
-    case UNW_X86_CS:  addr = &uc->uc_mcontext.gregs[REG_CS]; break;
-    case UNW_X86_EFLAGS:  addr = &uc->uc_mcontext.gregs[REG_EFL]; break;
-    case UNW_X86_SS:  addr = &uc->uc_mcontext.gregs[REG_SS]; break;
-    default: addr = NULL;
+        case UNW_X86_GS:  addr = &uc->uc_mcontext.gregs[REG_GS]; break;
+        case UNW_X86_FS:  addr = &uc->uc_mcontext.gregs[REG_FS]; break;
+        case UNW_X86_ES:  addr = &uc->uc_mcontext.gregs[REG_ES]; break;
+        case UNW_X86_DS:  addr = &uc->uc_mcontext.gregs[REG_DS]; break;
+        case UNW_X86_EAX: addr = &uc->uc_mcontext.gregs[REG_EAX]; break;
+        case UNW_X86_EBX: addr = &uc->uc_mcontext.gregs[REG_EBX]; break;
+        case UNW_X86_ECX: addr = &uc->uc_mcontext.gregs[REG_ECX]; break;
+        case UNW_X86_EDX: addr = &uc->uc_mcontext.gregs[REG_EDX]; break;
+        case UNW_X86_ESI: addr = &uc->uc_mcontext.gregs[REG_ESI]; break;
+        case UNW_X86_EDI: addr = &uc->uc_mcontext.gregs[REG_EDI]; break;
+        case UNW_X86_EBP: addr = &uc->uc_mcontext.gregs[REG_EBP]; break;
+        case UNW_X86_EIP: addr = &uc->uc_mcontext.gregs[REG_EIP]; break;
+        case UNW_X86_ESP: addr = &uc->uc_mcontext.gregs[REG_ESP]; break;
+        case UNW_X86_TRAPNO:  addr = &uc->uc_mcontext.gregs[REG_TRAPNO]; break;
+        case UNW_X86_CS:  addr = &uc->uc_mcontext.gregs[REG_CS]; break;
+        case UNW_X86_EFLAGS:  addr = &uc->uc_mcontext.gregs[REG_EFL]; break;
+        case UNW_X86_SS:  addr = &uc->uc_mcontext.gregs[REG_SS]; break;
+        default: addr = NULL;
     }
     return addr;
+
+#elif defined(__x86_64__)
+    void *addr;
+    switch (reg) {
+        case UNW_X86_64_R8: addr = &uc->uc_mcontext.gregs[REG_R8]; break;
+        case UNW_X86_64_R9: addr = &uc->uc_mcontext.gregs[REG_R9]; break;
+        case UNW_X86_64_R10: addr = &uc->uc_mcontext.gregs[REG_R10]; break;
+        case UNW_X86_64_R11: addr = &uc->uc_mcontext.gregs[REG_R11]; break;
+        case UNW_X86_64_R12: addr = &uc->uc_mcontext.gregs[REG_R12]; break;
+        case UNW_X86_64_R13: addr = &uc->uc_mcontext.gregs[REG_R13]; break;
+        case UNW_X86_64_R14: addr = &uc->uc_mcontext.gregs[REG_R14]; break;
+        case UNW_X86_64_R15: addr = &uc->uc_mcontext.gregs[REG_R15]; break;
+        case UNW_X86_64_RDI: addr = &uc->uc_mcontext.gregs[REG_RDI]; break;
+        case UNW_X86_64_RSI: addr = &uc->uc_mcontext.gregs[REG_RSI]; break;
+        case UNW_X86_64_RBP: addr = &uc->uc_mcontext.gregs[REG_RBP]; break;
+        case UNW_X86_64_RBX: addr = &uc->uc_mcontext.gregs[REG_RBX]; break;
+        case UNW_X86_64_RDX: addr = &uc->uc_mcontext.gregs[REG_RDX]; break;
+        case UNW_X86_64_RAX: addr = &uc->uc_mcontext.gregs[REG_RAX]; break;
+        case UNW_X86_64_RCX: addr = &uc->uc_mcontext.gregs[REG_RCX]; break;
+        case UNW_X86_64_RSP: addr = &uc->uc_mcontext.gregs[REG_RSP]; break;
+        case UNW_X86_64_RIP: addr = &uc->uc_mcontext.gregs[REG_RIP]; break;
+        default: addr = NULL;
+    }
+    return addr;
+#else
+#error Architecture is not supported.
 #endif
 }
 

@@ -10,19 +10,23 @@
 
 #ifdef ENABLE_INPROCESS
 
-static uintptr_t ndcrash_pc_from_ucontext(const ucontext_t *context) {
-#if (defined(__arm__))
-    return context->uc_mcontext.arm_pc;
-#elif (defined(__i386__))
-    return context->uc_mcontext.gregs[REG_EIP];
+static uintptr_t ndcrash_pc_from_ucontext(const ucontext_t *uc) {
+#if defined(__arm__)
+    return uc->uc_mcontext.arm_pc;
+#elif defined(__i386__)
+    return uc->uc_mcontext.gregs[REG_EIP];
+#elif defined(__x86_64__)
+    return uc->uc_mcontext.gregs[REG_RIP];
 #endif
 }
 
 static uintptr_t ndcrash_sp_from_ucontext(const ucontext_t *uc) {
-#if (defined(__arm__))
+#if defined(__arm__)
     return uc->uc_mcontext.arm_sp;
-#elif (defined(__i386__))
+#elif defined(__i386__)
     return uc->uc_mcontext.gregs[REG_ESP];
+#elif defined(__x86_64__)
+    return uc->uc_mcontext.gregs[REG_RSP];
 #endif
 }
 
@@ -36,10 +40,8 @@ static uintptr_t ndcrash_rewind_pc(uintptr_t pc) {
         }
     }
     return pc - 4;
-#elif defined(__i386__)
+#elif defined(__i386__) || defined(__x86_64__)
     return pc - 1;
-#else
-#error Architecture is not supported.
 #endif
 }
 

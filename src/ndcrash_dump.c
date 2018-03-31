@@ -8,6 +8,8 @@
 #include <fcntl.h>
 #include <android/log.h>
 #include <inttypes.h>
+#include <string.h>
+#include <errno.h>
 
 #if __LP64__
 #define PRIPTR "016" PRIxPTR
@@ -55,19 +57,26 @@ int ndcrash_dump_create_file(const char *path) {
 
 void ndcrash_dump_write_line(int fd, const char *format, ...) {
     char buffer[NDCRASH_LOG_BUFFER_SIZE];
-    va_list args;
-    va_start(args, format);
 
     // First writing to a log as is.
-    __android_log_vprint(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, format, args);
+    {
+        va_list args;
+        va_start(args, format);
+        __android_log_vprint(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, format, args);
+        va_end(args);
+    }
 
     // Writing file to log may be disabled.
     if (fd <= 0) return;
 
     // Writing to a buffer.
-    int printed = vsnprintf(buffer, NDCRASH_LOG_BUFFER_SIZE, format, args);
-
-    va_end(args);
+    int printed;
+    {
+        va_list args;
+        va_start(args, format);
+        printed = vsnprintf(buffer, NDCRASH_LOG_BUFFER_SIZE, format, args);
+        va_end(args);
+    }
 
     // printed contains the number of characters that would have been written if n had been sufficiently
     // large, not counting the terminating null character.
@@ -125,7 +134,7 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
                 proc_comm_content);
     }
     {
-        char addr_buffer[11]; // TODO: Add 64 bit support.
+        char addr_buffer[20];
         if (ndcrash_signal_has_si_addr(signo, si_code)) {
             snprintf(addr_buffer, sizeof(addr_buffer), "%p", faultaddr);
         } else {
@@ -160,6 +169,25 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
             ctx->gregs[REG_CS], ctx->gregs[REG_DS], ctx->gregs[REG_ES], ctx->gregs[REG_FS], ctx->gregs[REG_SS]);
     ndcrash_dump_write_line(outfile, "    eip %08lx  ebp %08lx  esp %08lx  flags %08lx",
             ctx->gregs[REG_EIP], ctx->gregs[REG_EBP], ctx->gregs[REG_ESP], ctx->gregs[REG_EFL]);
+#elif defined(__x86_64__)
+    ndcrash_dump_write_line(
+            outfile, "    rax %016lx  rbx %016lx  rcx %016lx  rdx %016lx",
+            ctx->gregs[REG_RAX], ctx->gregs[REG_RBX], ctx->gregs[REG_RCX], ctx->gregs[REG_RDX]);
+    ndcrash_dump_write_line(
+            outfile, "    rsi %016lx  rdi %016lx",
+            ctx->gregs[REG_RSI], ctx->gregs[REG_RDI]);
+    ndcrash_dump_write_line(
+            outfile, "    r8  %016lx  r9  %016lx  r10 %016lx  r11 %016lx",
+            ctx->gregs[REG_R8], ctx->gregs[REG_R9], ctx->gregs[REG_R10], ctx->gregs[REG_R11]);
+    ndcrash_dump_write_line(
+            outfile, "    r12 %016lx  r13 %016lx  r14 %016lx  r15 %016lx",
+            ctx->gregs[REG_R12], ctx->gregs[REG_R13], ctx->gregs[REG_R14], ctx->gregs[REG_R15]);
+    ndcrash_dump_write_line(
+            outfile, "    cs  %016lx"/*  ss  %016lx"*/,
+            ctx->gregs[REG_CSGSFS]/*, ctx->gregs[REG_SS]*/);
+    ndcrash_dump_write_line(
+            outfile, "    rip %016lx  rbp %016lx  rsp %016lx  eflags %016lx",
+            ctx->gregs[REG_RIP], ctx->gregs[REG_RBP], ctx->gregs[REG_RSP], ctx->gregs[REG_EFL]);
 #endif
 
     ndcrash_dump_write_line(outfile, " ");

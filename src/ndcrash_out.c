@@ -9,6 +9,8 @@
 #include <android/log.h>
 #include <sys/socket.h>
 #include <linux/un.h>
+#include <string.h>
+#include <errno.h>
 
 #ifdef ENABLE_OUTOFPROCESS
 

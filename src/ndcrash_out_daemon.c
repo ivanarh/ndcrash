@@ -13,6 +13,8 @@
 #include <sys/param.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
+#include <string.h>
+#include <errno.h>
 
 #ifdef ENABLE_OUTOFPROCESS
 
