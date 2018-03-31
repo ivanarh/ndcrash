@@ -27,14 +27,26 @@ static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *c
         // Looking for a map info item for pc on this unwinding step.
         MapInfo * const map_info = maps.Find(regs->pc());
         if (!map_info) {
-            NDCRASHLOG(ERROR, "libunwindstack: failed to find map info item.");
+            ndcrash_dump_backtrace_line(
+                    outfile,
+                    (int)frame_num,
+                    (intptr_t)regs->pc(),
+                    NULL,
+                    NULL,
+                    0);
             break;
         }
 
         // Loading data from ELF
         Elf * const elf = map_info->GetElf(getpid(), true);
         if (!elf) {
-            NDCRASHLOG(ERROR, "libunwindstack: failed to get data from elf.");
+            ndcrash_dump_backtrace_line(
+                    outfile,
+                    (int)frame_num,
+                    (intptr_t)regs->pc(),
+                    map_info->name.c_str(),
+                    NULL,
+                    0);
             break;
         }
 
@@ -50,21 +62,22 @@ static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *c
         // Getting function name and writing value to a log.
         uint64_t func_offset = 0;
         if (elf->GetFunctionName(rel_pc, &unw_function_name, &func_offset)) {
-            ndcrash_dump_backtrace_line_full(
+            ndcrash_dump_backtrace_line(
                     outfile,
                     (int)frame_num,
                     (intptr_t)rel_pc,
                     map_info->name.c_str(),
                     unw_function_name.c_str(),
                     (int)func_offset);
-
         } else {
             unw_function_name.clear();
-            ndcrash_dump_backtrace_line_part(
+            ndcrash_dump_backtrace_line(
                     outfile,
                     (int)frame_num,
                     (intptr_t)rel_pc,
-                    map_info->name.c_str());
+                    map_info->name.c_str(),
+                    NULL,
+                    0);
         }
 
         // Trying to switch to a next frame.

@@ -7,6 +7,13 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <android/log.h>
+#include <inttypes.h>
+
+#if __LP64__
+#define PRIPTR "016" PRIxPTR
+#else
+#define PRIPTR "08" PRIxPTR
+#endif
 
 /**
  * Reads a file contents from passed filename to output buffer with specified size. Appends '\0'
@@ -72,7 +79,7 @@ void ndcrash_dump_write_line(int fd, const char *format, ...) {
         buffer[printed] = '\n';
 
         // Writing to a file including \n character.
-        write(fd, buffer, (size_t)printed + 1);
+        write(fd, buffer, (size_t) printed + 1);
     }
 }
 
@@ -159,41 +166,35 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
     ndcrash_dump_write_line(outfile, "backtrace:");
 }
 
-void ndcrash_dump_backtrace_line_full(int outfile, int counter, intptr_t pc, const char *path,
-                                      const char *funcname, int offset) {
-    ndcrash_dump_write_line(outfile,
-                            "    #%02d pc %08lx  %s (%s+%d)",
-                            counter,
-                            pc,
-                            path,
-                            funcname,
-                            offset
-    );
-}
+void ndcrash_dump_backtrace_line(
+        int outfile,
+        int counter,
+        intptr_t pc,
+        const char *map_name,
+        const char *func_name,
+        int func_offset) {
+    if (!map_name) {
+        map_name = "<unknown>";
+    } else if (!*map_name) {
+        map_name = "<anonymous>";
+    }
+    if (!func_name) {
+        ndcrash_dump_write_line(
+                outfile,
+                "    #%02d pc %"PRIPTR"  %s",
+                counter,
+                pc,
+                map_name);
+    } else {
+        ndcrash_dump_write_line(
+                outfile,
+                "    #%02d pc %"PRIPTR"  %s (%s+%d)",
+                counter,
+                pc,
+                map_name,
+                func_name,
+                func_offset
+        );
 
-void ndcrash_dump_backtrace_line_part(int outfile, int counter, intptr_t pc, const char *path) {
-    ndcrash_dump_write_line(outfile,
-                            "    #%02d pc %08lx  %s",
-                            counter,
-                            pc,
-                            path
-    );
-}
-
-void ndcrash_dump_backtrace_line_func_name(int outfile, int counter, const char *funcname, int offset) {
-    ndcrash_dump_write_line(
-            outfile,
-            "    #%02d  (%s+%d)",
-            counter,
-            funcname,
-            offset
-    );
-}
-
-void ndcrash_dump_backtrace_line_no_data(int outfile, int counter) {
-    ndcrash_dump_write_line(
-            outfile,
-            "    #%02d",
-            counter
-    );
+    }
 }

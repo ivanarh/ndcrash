@@ -44,41 +44,17 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
  * @param outfile Output file descriptor for a crash report.
  * @param counter Number of backtrace element.
  * @param pc Program counter value (address of instruction). Relative.
- * @param path Path of object containing a function.
- * @param funcname Name of function.
- * @param offset Offset of instruction from function start. In bytes.
+ * @param map_name Name of memory map entry containing this function.
+ * @param func_name Name of function. If NULL not printed.
+ * @param func_offset Offset of instruction from function start, in bytes. Ignored if func_name is NULL.
  */
-void ndcrash_dump_backtrace_line_full(int outfile, int counter, intptr_t pc, const char *path,
-                                      const char *funcname, int offset);
-
-/**
- * Writes a partial line of backtrace to a crash report. Used when we didn't manage to determine
- * a function name and offset within it.
- * @param outfile Output file descriptor for a crash report.
- * @param counter Number of backtrace element.
- * @param pc Program counter value (address of instruction). Relative.
- * @param path Path of object containing a function.
- */
-void ndcrash_dump_backtrace_line_part(int outfile, int counter, intptr_t pc, const char *path);
-
-/**
- * Writes a very partial line of backtrace to a crash report when we only managed to obtain a function
- * name and offset withing it.
- * @param outfile Output file descriptor for a crash report.
- * @param counter Number of backtrace element.
- * @param funcname Name of function.
- * @param offset Offset of instruction from function start. In bytes.
- */
-void ndcrash_dump_backtrace_line_func_name(int outfile, int counter, const char *funcname, int offset);
-
-/**
- * Writes a very partial line of backtrace to a crash report when couldn't obtain any information about
- * stack frame. In this case only frame number is written to a log.
- * @param outfile Output file descriptor for a crash report.
- * @param counter Number of backtrace element.
- */
-void ndcrash_dump_backtrace_line_no_data(int outfile, int counter);
-
+void ndcrash_dump_backtrace_line(
+        int outfile,
+        int counter,
+        intptr_t pc,
+        const char *map_name,
+        const char *func_name,
+        int func_offset);
 
 #ifdef __cplusplus
 }

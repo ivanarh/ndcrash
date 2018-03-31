@@ -49,23 +49,14 @@ static void ndcrash_try_unwind_frame(uintptr_t pc, int outfile, int *frameno, bo
         if (rewind) {
             pc = ndcrash_rewind_pc(pc);
         }
-        if (info.dli_sname && info.dli_saddr) {
-            ndcrash_dump_backtrace_line_full(
-                    outfile,
-                     *frameno,
-                     (uintptr_t)pc - (uintptr_t)info.dli_fbase,
-                     info.dli_fname,
-                     info.dli_sname,
-                     (uintptr_t)pc - (uintptr_t)info.dli_saddr
-            );
-        } else {
-            ndcrash_dump_backtrace_line_part(
-                    outfile,
-                     *frameno,
-                     (uintptr_t )pc - (uintptr_t)info.dli_fbase,
-                     info.dli_fname
-            );
-        }
+        ndcrash_dump_backtrace_line(
+                outfile,
+                 *frameno,
+                 (uintptr_t)pc - (uintptr_t)info.dli_fbase,
+                 info.dli_fname,
+                 info.dli_sname, // May be null.
+                 (uintptr_t)pc - (uintptr_t)info.dli_saddr
+        );
         ++(*frameno);
     }
 }
@@ -102,7 +93,7 @@ void ndcrash_in_unwind_stackscan(int outfile, struct ucontext *context) {
 
     uintptr_t *stack_content = (uintptr_t *) stack.sp;
     const uintptr_t *stack_end = (uintptr_t *) stack.end;
-    for (; stack_content != stack_end; ++stack_content) {
+    for (; stack_content != stack_end && frameno < NDCRASH_MAX_FRAMES; ++stack_content) {
         ndcrash_try_unwind_frame(*stack_content, outfile, &frameno, true);
     }
 }

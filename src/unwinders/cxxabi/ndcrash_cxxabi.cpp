@@ -22,25 +22,16 @@ _Unwind_Reason_Code callback(struct _Unwind_Context *context, void *data) {
     const uintptr_t pc = _Unwind_GetIP(context);
     Dl_info info;
     if (pc && dladdr((void *) pc, &info)) {
-        if (info.dli_sname && info.dli_saddr) {
-            ndcrash_dump_backtrace_line_full(
-                    ud->outfile,
-                    ud->frameno,
-                    (intptr_t) pc - (intptr_t) info.dli_fbase,
-                    info.dli_fname,
-                    info.dli_sname,
-                    (intptr_t) pc - (intptr_t) info.dli_saddr
-            );
-        } else {
-            ndcrash_dump_backtrace_line_part(
-                    ud->outfile,
-                    ud->frameno,
-                    (intptr_t) pc - (intptr_t) info.dli_fbase,
-                    info.dli_fname
-            );
-        }
+        ndcrash_dump_backtrace_line(
+                ud->outfile,
+                ud->frameno,
+                (intptr_t) pc - (intptr_t) info.dli_fbase,
+                info.dli_fname,
+                info.dli_sname,
+                (intptr_t) pc - (intptr_t) info.dli_saddr
+        );
     } else {
-        ndcrash_dump_backtrace_line_no_data(ud->outfile, ud->frameno);
+        ndcrash_dump_backtrace_line(ud->outfile, ud->frameno, pc, NULL, NULL, 0);
     }
     return ++ud->frameno >= MAX_DEPTH ? _URC_END_OF_STACK : _URC_NO_REASON;
 }

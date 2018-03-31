@@ -57,6 +57,11 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
             unw_word_t regip;
             unw_get_reg(unw_cursor, UNW_REG_IP, &regip);
 
+            // Looking for a function name.
+            unw_word_t func_offset;
+            const bool func_name_found = unw_get_proc_name(
+                    unw_cursor, unw_function_name, sizeofa(unw_function_name), &func_offset) > 0;
+
             // Looking for a object (shared library) where a function is located.
             unw_map_cursor_t proc_map_cursor;
             unw_map_local_cursor_get(&proc_map_cursor);
@@ -65,40 +70,19 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
             while (unw_map_cursor_get_next(&proc_map_cursor, &proc_map_item) > 0) {
                 if (regip >= proc_map_item.start && regip < proc_map_item.end) {
                     maps_found = true;
+                    regip -= proc_map_item.start; // Making relative.
                     break;
                 }
             }
 
-            // Looking for a function name.
-            unw_word_t offset;
-            const bool func_name_found = unw_get_proc_name(unw_cursor, unw_function_name, sizeofa(unw_function_name), &offset) > 0;
-
             // Writing a backtrace line.
-            if (maps_found) {
-                if (func_name_found) {
-                    ndcrash_dump_backtrace_line_full(
-                            outfile,
-                            i,
-                            regip - proc_map_item.start,
-                            proc_map_item.path,
-                            unw_function_name,
-                            offset
-                    );
-                } else {
-                    ndcrash_dump_backtrace_line_part(
-                            outfile,
-                            i,
-                            regip - proc_map_item.start,
-                            proc_map_item.path
-                    );
-                }
-            } else {
-                if (func_name_found) {
-                    ndcrash_dump_backtrace_line_func_name(outfile, i, unw_function_name, offset);
-                } else {
-                    ndcrash_dump_backtrace_line_no_data(outfile, i);
-                }
-            }
+            ndcrash_dump_backtrace_line(
+                    outfile,
+                    i,
+                    regip, // Relative if maps is found
+                    maps_found ? proc_map_item.path : NULL,
+                    func_name_found ? unw_function_name : NULL,
+                    func_offset);
 
             // Trying to switch to a previous stack frame.
             if (unw_step(unw_cursor) <= 0) break;
@@ -259,50 +243,34 @@ void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *messa
                         unw_map_t proc_map_item = {0, 0, 0, 0, "", 0};
                         unw_map_cursor_reset(&proc_map_cursor);
 
-                        // Looking for a object (shared library) where a function is located.
-                        bool maps_found = false;
-                        while (unw_map_cursor_get_next(&proc_map_cursor, &proc_map_item) > 0) {
-                            if (regip >= proc_map_item.start && regip < proc_map_item.end) {
-                                maps_found = true;
-                                break;
-                            }
-                        }
-
                         // Looking for a function name.
-                        unw_word_t offset;
+                        unw_word_t func_offset;
                         const bool func_name_found = unw_get_proc_name_by_ip(
                                 addr_space,
                                 regip,
                                 unw_function_name,
                                 sizeofa(unw_function_name),
-                                &offset,&ndcrash_as_arg) >= 0 && unw_function_name[0] != '\0';
+                                &func_offset,
+                                &ndcrash_as_arg) >= 0 && unw_function_name[0] != '\0';
 
-                        // Writing a backtrace line.
-                        if (maps_found) {
-                            if (func_name_found) {
-                                ndcrash_dump_backtrace_line_full(
-                                        outfile,
-                                        i,
-                                        regip - proc_map_item.start,
-                                        proc_map_item.path,
-                                        unw_function_name,
-                                        offset
-                                );
-                            } else {
-                                ndcrash_dump_backtrace_line_part(
-                                        outfile,
-                                        i,
-                                        regip - proc_map_item.start,
-                                        proc_map_item.path
-                                );
-                            }
-                        } else {
-                            if (func_name_found) {
-                                ndcrash_dump_backtrace_line_func_name(outfile, i, unw_function_name, offset);
-                            } else {
-                                ndcrash_dump_backtrace_line_no_data(outfile, i);
+                        // Looking for a object (shared library) where a function is located.
+                        bool maps_found = false;
+                        while (unw_map_cursor_get_next(&proc_map_cursor, &proc_map_item) > 0) {
+                            if (regip >= proc_map_item.start && regip < proc_map_item.end) {
+                                maps_found = true;
+                                regip -= proc_map_item.start; // Making relative.
+                                break;
                             }
                         }
+
+                        // Writing a backtrace line.
+                        ndcrash_dump_backtrace_line(
+                                outfile,
+                                i,
+                                regip, // Relative if maps is found
+                                maps_found ? proc_map_item.path : NULL,
+                                func_name_found ? unw_function_name : NULL,
+                                func_offset);
 
                         // Trying to switch to a previous stack frame.
                         if (unw_step(&unw_cursor) <= 0) break;
