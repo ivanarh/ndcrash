@@ -16,12 +16,12 @@ using namespace unwindstack;
 
 #if defined(ENABLE_INPROCESS) || defined(ENABLE_OUTOFPROCESS)
 
-static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *context, Maps &maps, Memory &memory) {
+static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *context, Maps &maps, const std::shared_ptr<Memory> &memory) {
     // String for function name.
     std::string unw_function_name;
 
     // Initializing registers value from ucontext.
-    const std::unique_ptr<Regs> regs(Regs::CreateFromUcontext(Regs::GetMachineType(), context));
+    const std::unique_ptr<Regs> regs(Regs::CreateFromUcontext(Regs::CurrentArch(), context));
 
     for (size_t frame_num = 0; frame_num < NDCRASH_MAX_FRAMES; frame_num++) {
         // Looking for a map info item for pc on this unwinding step.
@@ -38,7 +38,7 @@ static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *c
         }
 
         // Loading data from ELF
-        Elf * const elf = map_info->GetElf(getpid(), true);
+        Elf * const elf = map_info->GetElf(memory, true);
         if (!elf) {
             ndcrash_dump_backtrace_line(
                     outfile,
@@ -51,12 +51,13 @@ static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *c
         }
 
         // Getting value of program counter relative module where a function is located.
-        uint64_t rel_pc = elf->GetRelPc(regs->pc(), map_info);
+        const uint64_t rel_pc = elf->GetRelPc(regs->pc(), map_info);
+        uint64_t adjusted_rel_pc = rel_pc;
         if (frame_num != 0) {
             // If it's not a first frame we need to rewind program counter value to previous instruction.
             // For the first frame pc from ucontext points exactly to a failed instruction, for other
             // frames rel_pc will contain return address after function call instruction.
-            rel_pc = regs->GetAdjustedPc(rel_pc, elf);
+            adjusted_rel_pc -= regs->GetPcAdjustment(rel_pc, elf);
         }
 
         // Getting function name and writing value to a log.
@@ -81,7 +82,8 @@ static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *c
         }
 
         // Trying to switch to a next frame.
-        if (!elf->Step(rel_pc + map_info->elf_offset, regs.get(), &memory)) {
+        bool finished = false;
+        if (!elf->Step(rel_pc, adjusted_rel_pc, map_info->elf_offset, regs.get(), memory.get(), &finished)) {
             break;
         }
     }
@@ -99,7 +101,7 @@ void ndcrash_in_unwind_libunwindstack(int outfile, struct ucontext *context) {
         return;
     }
     // Unwinding stack.
-    MemoryLocal memory;
+    const std::shared_ptr<Memory> memory(new MemoryLocal);
     ndcrash_common_unwind_libunwindstack(outfile, context, maps, memory);
 }
 
@@ -114,7 +116,7 @@ void ndcrash_out_unwind_libunwindstack(int outfile, struct ndcrash_out_message *
         return;
     }
     // Unwinding stack.
-    MemoryRemote memory(message->tid);
+    const std::shared_ptr<Memory> memory(new MemoryRemote(message->tid));
     ndcrash_common_unwind_libunwindstack(outfile, &message->context, maps, memory);
 }
 
