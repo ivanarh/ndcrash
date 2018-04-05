@@ -110,7 +110,7 @@ enum ndcrash_error ndcrash_out_init() {
 
     // Trying to register signal handler.
     if (!ndcrash_register_signal_handler(&ndcrash_out_signal_handler, ndcrash_out_context_instance->old_handlers)) {
-        ndcrash_in_deinit();
+        ndcrash_out_deinit();
         return ndcrash_error_signal;
     }
 

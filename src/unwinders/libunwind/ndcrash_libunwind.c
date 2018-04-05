@@ -13,7 +13,7 @@
 #include <stdbool.h>
 #include <malloc.h>
 
-#ifdef ENABLE_INPROCESS
+#if defined(ENABLE_INPROCESS) || defined(ENABLE_OUTOFPROCESS)
 
 /**
  * Initializes unw_context_t structure by specified ucontext structure.
@@ -21,7 +21,7 @@
  * @param context Source data.
  * @param unw_ctx Pointer to destination structure.
  */
-void ndcrash_in_unwind_libunwind_get_context(struct ucontext *context, unw_context_t *unw_ctx) {
+static void ndcrash_libunwind_get_context(struct ucontext *context, unw_context_t *unw_ctx) {
 #if defined(__arm__)
     struct sigcontext *sig_ctx = &context->uc_mcontext;
     memcpy(unw_ctx->regs, &sig_ctx->arm_r0, sizeof(unw_ctx->regs));
@@ -31,6 +31,10 @@ void ndcrash_in_unwind_libunwind_get_context(struct ucontext *context, unw_conte
 #error Architecture is not supported.
 #endif
 }
+
+#endif //defined(ENABLE_INPROCESS) || defined(ENABLE_OUTOFPROCESS)
+
+#ifdef ENABLE_INPROCESS
 
 void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
     // Parsing local /proc/pid/maps
@@ -47,7 +51,7 @@ void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context) {
 
     // Initializing context instance (processor state).
     unw_context_t unw_ctx;
-    ndcrash_in_unwind_libunwind_get_context(context, &unw_ctx);
+    ndcrash_libunwind_get_context(context, &unw_ctx);
 
     // Initializing cursor for unwinding from passed processor context.
     if (!unw_init_local(unw_cursor, &unw_ctx)) {
@@ -279,7 +283,7 @@ void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *messa
 
             struct ndcrash_out_libunwind_as_arg ndcrash_as_arg;
             ndcrash_as_arg.upt_info = _UPT_create(message->tid);
-            ndcrash_in_unwind_libunwind_get_context(&message->context, &ndcrash_as_arg.unw_ctx);
+            ndcrash_libunwind_get_context(&message->context, &ndcrash_as_arg.unw_ctx);
 
             if (ndcrash_as_arg.upt_info) {
                 unw_cursor_t unw_cursor;
