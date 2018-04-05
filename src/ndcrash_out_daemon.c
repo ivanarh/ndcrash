@@ -3,6 +3,7 @@
 #include "ndcrash_dump.h"
 #include "ndcrash_private.h"
 #include "ndcrash_log.h"
+#include "ndcrash_utils.h"
 #include "ndcrash_fd_utils.h"
 #include <malloc.h>
 #include <unistd.h>
@@ -39,6 +40,10 @@ struct ndcrash_out_daemon_context {
 
     /// Argument for daemon lifecycle callbacks. Passed to initialization function.
     void *callback_arg;
+
+    /// Socket address that is used to communicate with debugger.
+    struct sockaddr_un socket_address;
+
 };
 
 /// Global instance of out-of-process daemon context.
@@ -158,17 +163,8 @@ static void * ndcrash_out_daemon_function(void *arg) {
         setsockopt(listensock, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
     }
 
-    // Discarding terminating \0 char.
-    const size_t socket_name_size = sizeofa(NDCRASH_SOCKET_NAME) - 1;
-
     // Binding to an address.
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = PF_LOCAL;
-    addr.sun_path[0] = 0;
-    memcpy(addr.sun_path + 1, NDCRASH_SOCKET_NAME, socket_name_size);
-    int addrlen = sizeof(sa_family_t) + 1 + socket_name_size;
-    if (bind(listensock, (struct sockaddr *)&addr, addrlen) < 0) {
+    if (bind(listensock, (struct sockaddr *)&ndcrash_out_daemon_context_instance->socket_address, sizeof(struct sockaddr_un)) < 0) {
         NDCRASHLOG(ERROR,"Couldn't bind socket, error: %s (%d)", strerror(errno), errno);
         return NULL;
     }
@@ -222,6 +218,7 @@ static void * ndcrash_out_daemon_function(void *arg) {
 }
 
 enum ndcrash_error ndcrash_out_start_daemon(
+        const char *socket_name,
         const enum ndcrash_unwinder unwinder,
         const char *log_file,
         ndcrash_daemon_start_stop_callback start_callback,
@@ -233,6 +230,11 @@ enum ndcrash_error ndcrash_out_start_daemon(
         return ndcrash_error_already_initialized;
     }
 
+    // Socket name can't be null or empty.
+    if (!socket_name || !*socket_name) {
+        return ndcrash_error_socket_name;
+    }
+
     // Creating a new struct instance.
     ndcrash_out_daemon_context_instance = (struct ndcrash_out_daemon_context *) malloc(sizeof(struct ndcrash_out_daemon_context));
     memset(ndcrash_out_daemon_context_instance, 0, sizeof(struct ndcrash_out_daemon_context));
@@ -240,6 +242,9 @@ enum ndcrash_error ndcrash_out_start_daemon(
     ndcrash_out_daemon_context_instance->crash_callback = crash_callback;
     ndcrash_out_daemon_context_instance->stop_callback = stop_callback;
     ndcrash_out_daemon_context_instance->callback_arg = callback_arg;
+
+    // Filling in socket address.
+    ndcrash_out_fill_sockaddr(socket_name, &ndcrash_out_daemon_context_instance->socket_address);
 
     // Checking if unwinder is supported. Setting unwind function.
     switch (unwinder) {

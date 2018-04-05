@@ -24,6 +24,7 @@ enum ndcrash_error {
     ndcrash_error_signal,
     ndcrash_error_pipe,
     ndcrash_error_thread,
+    ndcrash_error_socket_name,
 };
 
 /**
@@ -43,8 +44,11 @@ void ndcrash_in_deinit();
 /**
  * Initializes crash reporting library in out-of-process mode. This method should be called from
  * the main process of an application.
+ * @param socket_name Name used to identify UNIX domain socket that is used to communicate with
+ * crash reporting daemon. Should be the same string as passed to ndcrash_out_start_daemon function.
+ * Shouldn't be null or empty string.
  */
-enum ndcrash_error ndcrash_out_init();
+enum ndcrash_error ndcrash_out_init(const char *socket_name);
 
 /**
  * De-initialize crash reporting library in out-of-process mode.
@@ -72,6 +76,9 @@ typedef void (*ndcrash_daemon_crash_callback)(const char *report_file, void *arg
  * saves a crash report to file. This method should be called from a separate process, for example,
  * background service that has android:process attribute.
  *
+ * @param socket_name Name used to identify UNIX domain socket that is used to communicate with
+ * crash reporting daemon. Should be the same string as passed to ndcrash_out_init function.
+ * Shouldn't be null or empty string.
  * @param unwinder What unwinder to use for unwinding.
  * @param log_file Path to crash report file where to write it.
  * @param start_callback Callback executed on successful daemon start from its background thread. NULL if not needed.
@@ -81,6 +88,7 @@ typedef void (*ndcrash_daemon_crash_callback)(const char *report_file, void *arg
  * @return Initialization result.
  */
 enum ndcrash_error ndcrash_out_start_daemon(
+        const char *socket_name,
         const enum ndcrash_unwinder unwinder,
         const char *report_file,
         ndcrash_daemon_start_stop_callback start_callback,

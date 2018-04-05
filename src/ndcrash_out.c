@@ -2,6 +2,7 @@
 #include "ndcrash_private.h"
 #include "ndcrash_signal_utils.h"
 #include "ndcrash_log.h"
+#include "ndcrash_utils.h"
 #include <signal.h>
 #include <malloc.h>
 #include <unistd.h>
@@ -19,6 +20,10 @@ struct ndcrash_out_context {
     /// Old handlers of signals that we restore on de-initialization. Keep values for all possible
     /// signals, for unused signals NULL value is stored.
     struct sigaction old_handlers[NSIG];
+
+    /// Socket address that we use to communicate with debugger.
+    struct sockaddr_un socket_address;
+
 };
 
 /// Global instance of out-of-process context.
@@ -56,18 +61,8 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
         return;
     }
 
-    // Discarding terminating \0 char.
-    const size_t socket_name_size = sizeofa(NDCRASH_SOCKET_NAME) - 1;
-
-    // Setting socket address.
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = PF_LOCAL;
-    addr.sun_path[0] = 0;
-    memcpy(addr.sun_path + 1, NDCRASH_SOCKET_NAME, socket_name_size); //Discarding terminating \0 char.
-
     // Connecting.
-    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr.sun_family) + 1 + socket_name_size)) {
+    if (connect(sock, (struct sockaddr *)&ndcrash_out_context_instance->socket_address, sizeof(struct sockaddr_un))) {
         NDCRASHLOG(ERROR,"Couldn't connect socket, error: %s (%d)", strerror(errno), errno);
         close(sock);
         return;
@@ -99,14 +94,22 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
     }
 }
 
-enum ndcrash_error ndcrash_out_init() {
+enum ndcrash_error ndcrash_out_init(const char *socket_name) {
     if (ndcrash_out_context_instance) {
         return ndcrash_error_already_initialized;
+    }
+
+    // Socket name can't be null or empty.
+    if (!socket_name || !*socket_name) {
+        return ndcrash_error_socket_name;
     }
 
     // Initializing context instance.
     ndcrash_out_context_instance = (struct ndcrash_out_context *) malloc(sizeof(struct ndcrash_out_context));
     memset(ndcrash_out_context_instance, 0, sizeof(struct ndcrash_out_context));
+
+    // Filling in socket address.
+    ndcrash_out_fill_sockaddr(socket_name, &ndcrash_out_context_instance->socket_address);
 
     // Trying to register signal handler.
     if (!ndcrash_register_signal_handler(&ndcrash_out_signal_handler, ndcrash_out_context_instance->old_handlers)) {
