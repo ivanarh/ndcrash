@@ -6,12 +6,12 @@
 /**
  * Enum representing supported unwinders for stack unwinding.
  */
-enum ndcrash_unwinder {                      // Supported architectures
+enum ndcrash_unwinder {                      // Supported modes
     ndcrash_unwinder_libcorkscrew,           // Both
     ndcrash_unwinder_libunwind,              // Both
     ndcrash_unwinder_libunwindstack,         // Both
-    ndcrash_unwinder_cxxabi,                 // In-process
-    ndcrash_unwinder_stackscan,              // In-process
+    ndcrash_unwinder_cxxabi,                 // In-process only
+    ndcrash_unwinder_stackscan,              // In-process only
 };
 
 /**

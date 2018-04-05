@@ -16,7 +16,20 @@ using namespace unwindstack;
 
 #if defined(ENABLE_INPROCESS) || defined(ENABLE_OUTOFPROCESS)
 
-static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *context, Maps &maps, const std::shared_ptr<Memory> &memory) {
+/**
+ * Common unwinding method for in-process and out-of-process.
+ * @param outfile Output file descriptor for a crash dump.
+ * @param context Processor context to unwind a stack.
+ * @param maps Parsed libunwindstack memory maps instance.
+ * @param memory libunwindstack Memory instance.
+ * @param withDebugData Flag whether to use GNU debug symbols data on unwinding.
+ */
+static inline void ndcrash_common_unwind_libunwindstack(
+        int outfile,
+        struct ucontext *context,
+        Maps &maps,
+        const std::shared_ptr<Memory> &memory,
+        bool withDebugData) {
     // String for function name.
     std::string unw_function_name;
 
@@ -38,7 +51,7 @@ static void ndcrash_common_unwind_libunwindstack(int outfile, struct ucontext *c
         }
 
         // Loading data from ELF
-        Elf * const elf = map_info->GetElf(memory, true);
+        Elf * const elf = map_info->GetElf(memory, withDebugData);
         if (!elf) {
             ndcrash_dump_backtrace_line(
                     outfile,
@@ -102,7 +115,9 @@ void ndcrash_in_unwind_libunwindstack(int outfile, struct ucontext *context) {
     }
     // Unwinding stack.
     const std::shared_ptr<Memory> memory(new MemoryLocal);
-    ndcrash_common_unwind_libunwindstack(outfile, context, maps, memory);
+    // GNU debug symbols usage is disabled, it's quite expensive and unwinding may fail because
+    // in signal handler we have a very limited stack size.
+    ndcrash_common_unwind_libunwindstack(outfile, context, maps, memory, false);
 }
 
 #endif //ENABLE_INPROCESS
@@ -117,7 +132,7 @@ void ndcrash_out_unwind_libunwindstack(int outfile, struct ndcrash_out_message *
     }
     // Unwinding stack.
     const std::shared_ptr<Memory> memory(new MemoryRemote(message->tid));
-    ndcrash_common_unwind_libunwindstack(outfile, &message->context, maps, memory);
+    ndcrash_common_unwind_libunwindstack(outfile, &message->context, maps, memory, true);
 }
 
 #endif //ENABLE_OUTOFPROCESS

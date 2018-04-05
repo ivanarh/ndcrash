@@ -26,7 +26,7 @@
  * @param buffersize Size of buffer in bytes.
  * @return Count of read bytes not including terminating '\0' character or -1 or error.
  */
-ssize_t ndcrash_read_file(const char *filename, char *outbuffer, size_t buffersize) {
+static inline ssize_t ndcrash_read_file(const char *filename, char *outbuffer, size_t buffersize) {
     const int fd = open(filename, O_RDONLY);
     if (fd < 0) return -1;
     ssize_t bytes_read;
@@ -96,14 +96,18 @@ void ndcrash_dump_write_line(int fd, const char *format, ...) {
 void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_code, void *faultaddr,
                          struct ucontext *context) {
     ndcrash_dump_write_line(outfile, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***");
+
+    char str_buffer[PROP_VALUE_MAX];
+
     {
-        char prop_buffer[PROP_VALUE_MAX];
-        __system_property_get("ro.build.fingerprint", prop_buffer);
-        ndcrash_dump_write_line(outfile, "Build fingerprint: %s", prop_buffer);
-        __system_property_get("ro.revision", prop_buffer);
+        // Getting system properties and writing them to report.
+        __system_property_get("ro.build.fingerprint", str_buffer);
+        ndcrash_dump_write_line(outfile, "Build fingerprint: %s", str_buffer);
+        __system_property_get("ro.revision", str_buffer);
         ndcrash_dump_write_line(outfile, "Revision: '0'");
     }
 
+    // Writing processor architecture.
 #ifdef __arm__
     ndcrash_dump_write_line(outfile, "ABI: 'arm'");
 #elif defined(__aarch64__)
@@ -115,19 +119,21 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
 #endif
 
     {
-        // Buffer used for file path formatting.
-        char proc_file_path[32];
+        // Buffer used for file path formatting. Max theoretical value is "/proc/2147483647/cmdline"
+        // 25 characters with terminating characters.
+        char proc_file_path[25];
 
-        // Buffers for process and thread name.
-        char proc_cmdline_content[64], proc_comm_content[32];
-        proc_cmdline_content[0] = '\0';
-        proc_comm_content[0] = '\0';
+        // Thread name. Strings longer than TASK_COMM_LEN (16) characters are silently truncated.
+        char proc_comm_content[16];
 
-        if (snprintf(proc_file_path, sizeofa(proc_file_path), "proc/%d/cmdline", pid) >= 0) {
-            ndcrash_read_file(proc_file_path, proc_cmdline_content, sizeofa(proc_cmdline_content));
+        // Setting first characters for a case when reading is failed.
+        str_buffer[0] = proc_file_path[0] = '\0';
+
+        if (snprintf(proc_file_path, sizeofa(proc_file_path), "/proc/%d/cmdline", pid) >= 0) {
+            ndcrash_read_file(proc_file_path, str_buffer, sizeofa(str_buffer));
         }
 
-        if (snprintf(proc_file_path, sizeofa(proc_file_path), "proc/%d/comm", pid) >= 0) {
+        if (snprintf(proc_file_path, sizeofa(proc_file_path), "/proc/%d/comm", pid) >= 0) {
             const ssize_t bytes_read = ndcrash_read_file(proc_file_path, proc_comm_content,
                                                          sizeofa(proc_comm_content));
             // comm usually contains newline character on the end. We don't need it.
@@ -141,15 +147,14 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
                 "pid: %d, tid: %d, name: %s  >>> %s <<<",
                 pid,
                 tid,
-                proc_cmdline_content,
+                str_buffer,
                 proc_comm_content);
     }
     {
-        char addr_buffer[20];
         if (ndcrash_signal_has_si_addr(signo, si_code)) {
-            snprintf(addr_buffer, sizeof(addr_buffer), "%p", faultaddr);
+            snprintf(str_buffer, sizeof(str_buffer), "%p", faultaddr);
         } else {
-            snprintf(addr_buffer, sizeof(addr_buffer), "--------");
+            snprintf(str_buffer, sizeof(str_buffer), "--------");
         }
         ndcrash_dump_write_line(
                 outfile,
@@ -158,9 +163,10 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
                 ndcrash_get_signame(signo),
                 si_code,
                 ndcrash_get_sigcode(signo, si_code),
-                addr_buffer);
+                str_buffer);
     }
 
+    // Writing registers to a report.
     const mcontext_t *const ctx = &context->uc_mcontext;
 #if defined(__arm__)
     ndcrash_dump_write_line(outfile, "    r0 %08x  r1 %08x  r2 %08x  r3 %08x",
