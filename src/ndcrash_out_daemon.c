@@ -210,6 +210,8 @@ static void * ndcrash_out_daemon_function(void *arg) {
         ndcrash_out_daemon_process_client(clientsock);
     }
 
+    close(listensock);
+
     if (ndcrash_out_daemon_context_instance->stop_callback) {
         ndcrash_out_daemon_context_instance->stop_callback(ndcrash_out_daemon_context_instance->callback_arg);
     }
@@ -300,7 +302,9 @@ bool ndcrash_out_stop_daemon() {
     if (!ndcrash_out_daemon_context_instance) return false;
     if (ndcrash_out_daemon_context_instance->daemon_thread) {
         // Writing to pipe in order to interrupt select.
-        write(ndcrash_out_daemon_context_instance->interruptor[1], (void *)'\0', 1);
+        if (write(ndcrash_out_daemon_context_instance->interruptor[1], (void *)"\0", 1) < 0) {
+            return false;
+        }
         pthread_join(ndcrash_out_daemon_context_instance->daemon_thread, NULL);
         close(ndcrash_out_daemon_context_instance->interruptor[0]);
         close(ndcrash_out_daemon_context_instance->interruptor[1]);

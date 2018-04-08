@@ -58,33 +58,38 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
     const int sock = socket(PF_LOCAL, SOCK_STREAM, 0);
     if (sock < 0) {
         NDCRASHLOG(ERROR,"Couldn't create socket, error: %s (%d)", strerror(errno), errno);
-        return;
-    }
-
-    // Connecting.
-    if (connect(sock, (struct sockaddr *)&ndcrash_out_context_instance->socket_address, sizeof(struct sockaddr_un))) {
-        NDCRASHLOG(ERROR,"Couldn't connect socket, error: %s (%d)", strerror(errno), errno);
-        close(sock);
-        return;
-    }
-
-    // Sending.
-    const ssize_t sent = send(sock, &msg, sizeof(msg), MSG_NOSIGNAL);
-    if (sent < 0) {
-        NDCRASHLOG(ERROR,"Send error: %s (%d)", strerror(errno), errno);
-    } else if (sent != sizeof(msg)) {
-        NDCRASHLOG(ERROR,"Error: couldn't send whole message, sent bytes: %d, message size: %d", (int)sent, (int)sizeof(msg));
     } else {
-        NDCRASHLOG(INFO, "Successfuly sent data to crash service.");
-    }
+        // Connecting.
+        if (connect(
+                sock,
+                (struct sockaddr *) &ndcrash_out_context_instance->socket_address,
+                sizeof(struct sockaddr_un))) {
+            NDCRASHLOG(ERROR, "Couldn't connect socket, error: %s (%d)", strerror(errno), errno);
+        } else {
+            // Sending.
+            const ssize_t sent = send(sock, &msg, sizeof(msg), MSG_NOSIGNAL);
+            if (sent < 0) {
+                NDCRASHLOG(ERROR, "Send error: %s (%d)", strerror(errno), errno);
+            } else if (sent != sizeof(msg)) {
+                NDCRASHLOG(
+                        ERROR,
+                        "Error: couldn't send whole message, sent bytes: %d, message size: %d",
+                        (int) sent,
+                        (int) sizeof(msg));
+            } else {
+                NDCRASHLOG(INFO, "Successfuly sent data to crash service.");
+            }
 
-    // Blocking read.
-    char c = 0;
-    if (recv(sock, &c, 1, MSG_NOSIGNAL) < 0) {
-        NDCRASHLOG(ERROR,"Recv error: %s (%d)", strerror(errno), errno);
-    }
+            // Blocking read.
+            char c = 0;
+            if (recv(sock, &c, 1, MSG_NOSIGNAL) < 0) {
+                NDCRASHLOG(ERROR, "Recv error: %s (%d)", strerror(errno), errno);
+            }
+        }
 
-    close(sock);
+        // Closing a socket.
+        close(sock);
+    }
 
     // In some cases we need to re-send a signal to run standard bionic handler.
     if (siginfo->si_code <= 0 || signo == SIGABRT) {
