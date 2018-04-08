@@ -18,13 +18,30 @@ enum ndcrash_unwinder {                      // Supported modes
  * Represents a result of ndcrash initialization.
  */
 enum ndcrash_error {
+
+    /// No error, everything is ok.
     ndcrash_ok,
+
+    /// NDCrash has already been initialized.
     ndcrash_error_already_initialized,
+
+    /// A selected working mode or unwinder is not supported.
     ndcrash_error_not_supported,
+
+    /// Error during registering a signal handler.
     ndcrash_error_signal,
+
+    /// Error during pipe creation. Pipes are used internally in out-of-process mode.
     ndcrash_error_pipe,
+
+    /// Error during thread creation for out-of-process daemon.
     ndcrash_error_thread,
+
+    /// Wrong socket name error.
     ndcrash_error_socket_name,
+
+    /// Wron process error. Happens if we try to initialize an out-of-process daemon from a main process.
+    ndcrash_error_wrong_process,
 };
 
 /**
