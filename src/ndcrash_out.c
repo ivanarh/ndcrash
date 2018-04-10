@@ -125,11 +125,12 @@ enum ndcrash_error ndcrash_out_init(const char *socket_name) {
     return ndcrash_ok;
 }
 
-void ndcrash_out_deinit() {
-    if (!ndcrash_out_context_instance) return;
+bool ndcrash_out_deinit() {
+    if (!ndcrash_out_context_instance) return false;
     ndcrash_unregister_signal_handler(ndcrash_out_context_instance->old_handlers);
     free(ndcrash_out_context_instance);
     ndcrash_out_context_instance = NULL;
+    return true;
 }
 
 #endif //ENABLE_OUTOFPROCESS

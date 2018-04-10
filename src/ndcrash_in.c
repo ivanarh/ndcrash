@@ -122,14 +122,15 @@ enum ndcrash_error ndcrash_in_init(const enum ndcrash_unwinder unwinder, const c
     return ndcrash_ok;
 }
 
-void ndcrash_in_deinit() {
-    if (!ndcrash_in_context_instance) return;
+bool ndcrash_in_deinit() {
+    if (!ndcrash_in_context_instance) return false;
     ndcrash_unregister_signal_handler(ndcrash_in_context_instance->old_handlers);
     if (ndcrash_in_context_instance->log_file) {
         free(ndcrash_in_context_instance->log_file);
     }
     free(ndcrash_in_context_instance);
     ndcrash_in_context_instance = NULL;
+    return true;
 }
 
 #endif //ENABLE_INPROCESS

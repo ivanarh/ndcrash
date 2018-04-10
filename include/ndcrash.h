@@ -54,9 +54,11 @@ enum ndcrash_error {
 enum ndcrash_error ndcrash_in_init(const enum ndcrash_unwinder unwinder, const char *log_file);
 
 /**
- * De-initialize crash reporting library in in-process mode.
+ * De-initialize crash reporting library in in-process mode. This call will restore previous signal
+ * handlers used for crash reporting.
+ * @return Flag whether de-initialization is successful.
  */
-void ndcrash_in_deinit();
+bool ndcrash_in_deinit();
 
 /**
  * Initializes crash reporting library in out-of-process mode. This method should be called from
@@ -68,9 +70,11 @@ void ndcrash_in_deinit();
 enum ndcrash_error ndcrash_out_init(const char *socket_name);
 
 /**
- * De-initialize crash reporting library in out-of-process mode.
+ * De-initialize crash reporting library in out-of-process mode. This call will restore previous signal
+ * handlers used for crash reporting.
+ * @return Flag whether de-initialization is successful.
  */
-void ndcrash_out_deinit();
+bool ndcrash_out_deinit();
 
 /**
  * Type for start and stop daemon callback.
