@@ -14,6 +14,7 @@ static const int SIGNALS_TO_CATCH[] = {
 #if defined(SIGSTKFLT)
         SIGSTKFLT,
 #endif
+        SIGTRAP,
 };
 
 /// Count of signals to catch
