@@ -12,6 +12,8 @@
 #include <linux/un.h>
 #include <string.h>
 #include <errno.h>
+#include <linux/prctl.h>
+#include <sys/prctl.h>
 
 #ifdef ENABLE_OUTOFPROCESS
 
@@ -24,6 +26,8 @@ struct ndcrash_out_context {
     /// Socket address that we use to communicate with debugger.
     struct sockaddr_un socket_address;
 
+    /// Old state of dumpable flag. Restoring it when a signal handler is de-initialized.
+    int old_dumpable;
 };
 
 /// Global instance of out-of-process context.
@@ -113,6 +117,12 @@ enum ndcrash_error ndcrash_out_init(const char *socket_name) {
     ndcrash_out_context_instance = (struct ndcrash_out_context *) malloc(sizeof(struct ndcrash_out_context));
     memset(ndcrash_out_context_instance, 0, sizeof(struct ndcrash_out_context));
 
+    // Saving old dumpable flag. Not checking for error.
+    ndcrash_out_context_instance->old_dumpable = prctl(PR_GET_DUMPABLE);
+
+    // Setting dumpable flag. Required for ptrace.
+    prctl(PR_SET_DUMPABLE, 1);
+
     // Filling in socket address.
     ndcrash_out_fill_sockaddr(socket_name, &ndcrash_out_context_instance->socket_address);
 
@@ -127,7 +137,16 @@ enum ndcrash_error ndcrash_out_init(const char *socket_name) {
 
 bool ndcrash_out_deinit() {
     if (!ndcrash_out_context_instance) return false;
+
+    // Restoring old signal handlers.
     ndcrash_unregister_signal_handler(ndcrash_out_context_instance->old_handlers);
+
+    // Restoring old dumpable state. Note that PR_GET_DUMPABLE might fail.
+    if (ndcrash_out_context_instance->old_dumpable >= 0) {
+        prctl(PR_SET_DUMPABLE, ndcrash_out_context_instance->old_dumpable);
+    }
+
+    // Freeing memory.
     free(ndcrash_out_context_instance);
     ndcrash_out_context_instance = NULL;
     return true;

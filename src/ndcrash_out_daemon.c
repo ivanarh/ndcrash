@@ -55,7 +55,7 @@ static const int SOCKET_BACKLOG = 1;
 static void ndcrash_out_daemon_do_unwinding(struct ndcrash_out_message *message) {
     const bool attached = ptrace(PTRACE_ATTACH, message->tid, NULL, NULL) != -1;
     if (!attached) {
-        NDCRASHLOG(INFO, "Ptrace attach failed");
+        NDCRASHLOG(INFO, "Ptrace attach failed to tid: %d errno: %d (%s)", (int) message->tid, errno, strerror(errno));
         return;
     }
     NDCRASHLOG(INFO, "Ptrace attach successful");
