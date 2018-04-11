@@ -98,6 +98,8 @@ enum ndcrash_error ndcrash_in_init(const enum ndcrash_unwinder unwinder, const c
             ndcrash_in_context_instance->unwind_function = &ndcrash_in_unwind_stackscan;
             break;
 #endif
+        default: // To suppress a warning.
+            break;
     }
     if (!ndcrash_in_context_instance->unwind_function) {
         ndcrash_in_deinit();

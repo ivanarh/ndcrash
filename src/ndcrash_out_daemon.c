@@ -265,6 +265,8 @@ enum ndcrash_error ndcrash_out_start_daemon(
             ndcrash_out_daemon_context_instance->unwind_function = &ndcrash_out_unwind_libunwindstack;
             break;
 #endif
+        default: // To suppress a warning.
+            break;
     }
     if (!ndcrash_out_daemon_context_instance->unwind_function) {
         ndcrash_out_deinit();
