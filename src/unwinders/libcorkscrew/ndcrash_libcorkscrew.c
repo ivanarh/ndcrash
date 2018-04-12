@@ -19,13 +19,12 @@ static const int LIBCORKSCREW_IN_MAX_FRAMES =
 void ndcrash_common_unwind_libcorkscrew(int outfile, backtrace_symbol_t *backtrace_symbols, ssize_t frame_count) {
     for (ssize_t i = 0; i < frame_count; ++i) {
         const backtrace_symbol_t *symbol = backtrace_symbols + i;
-        const char * const symbol_name = symbol->demangled_name ? symbol->demangled_name : symbol->symbol_name;
         ndcrash_dump_backtrace_line(
                 outfile,
                 i,
                 symbol->relative_pc,
                 symbol->map_name,
-                symbol_name,
+                symbol->symbol_name,
                 symbol->relative_pc - symbol->relative_symbol_addr);
     }
 }
