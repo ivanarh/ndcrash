@@ -1,9 +1,10 @@
 #include "ndcrash_unwinders.h"
 #include "ndcrash_dump.h"
 #include "ndcrash_private.h"
-#include <unwind.h>
 #include <dlfcn.h>
 #include <string.h>
+#define _GNU_SOURCE
+#include <unwind.h>
 
 #ifdef ENABLE_INPROCESS
 
@@ -22,8 +23,6 @@ typedef struct {
     int log_frame_no;
 
 } ndcrash_cxxabi_unwind_data;
-
-extern "C" {
 
 static _Unwind_Reason_Code ndcrash_in_cxxabi_callback(struct _Unwind_Context *context, void *data) {
     ndcrash_cxxabi_unwind_data * const ud = (ndcrash_cxxabi_unwind_data *) data;
@@ -59,7 +58,5 @@ void ndcrash_in_unwind_cxxabi(int outfile, struct ucontext *context) {
     unwdata.outfile = outfile;
     _Unwind_Backtrace(ndcrash_in_cxxabi_callback, &unwdata);
 }
-
-} //extern "C"
 
 #endif //ENABLE_INPROCESS
