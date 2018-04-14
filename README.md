@@ -4,13 +4,21 @@
 
 ## Key features ##
 
-* Written in C99, so it's fast and lightweight.
+* Written in C99 so it may be used in plain C projects.
 * On-device stack unwinding.
 * [ndk-stack](https://developer.android.com/ndk/guides/ndk-stack.html) compatible human-readable report format. This tool can be easilly used to access line numbers.
 * Supports 2 crash handling modes: *in-process* and *out-of-process*. 
 * Supports 5 different stack unwinders. 
 * 32 and 64 bit architectures support (depends on unwinder).
 * Easy-to-use Java wrapper https://github.com/ivanarh/jndcrash
+
+## Roadmap ##
+
+These features are not currently implemented but they are in plans. They are likely to be implemented only for out-of-process mode due to in-process mode restrictions.
+
+* Stack dump.
+* Memory map dump.
+* Backtraces for all threads (now only crashed thread is included to report).
 
 ## Crash handling modes ##
 
