@@ -11,6 +11,7 @@
 * Supports 5 different stack unwinders. 
 * 32 and 64 bit architectures support (depends on unwinder).
 * Easy-to-use Java wrapper https://github.com/ivanarh/jndcrash
+* Minimum tested Android version is 4.0.3 but theoretically it may work even on Android 2.3.
 
 ## Roadmap ##
 
