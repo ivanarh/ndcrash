@@ -36,6 +36,7 @@ static inline ssize_t ndcrash_read_file(const char *filename, char *outbuffer, s
     }
     if (bytes_read < 0) return -1;
     outbuffer[overall_read] = '\0';
+    close(fd);
     return overall_read;
 }
 
@@ -93,10 +94,74 @@ void ndcrash_dump_write_line(int fd, const char *format, ...) {
     }
 }
 
+/**
+ * Writes "backtrace:" line and a new line before it.
+ * @param outfile Output file descriptor for a crash report.
+ */
+static inline void ndcrash_write_backtrace_title(int outfile) {
+    ndcrash_dump_write_line(outfile, " ");
+    ndcrash_dump_write_line(outfile, "backtrace:");
+}
+
+/**
+ * Writes a line with an information about process and thread. Reads process and thread names
+ * and writes them to a crash dump. Example:
+ * "pid: 26823, tid: 26828, name: Jit thread pool  >>> ru.ivanarh.ndcrashdemo <<<"
+ * @param outfile Output file descriptor for a crash report.
+ * @param pid Process identifier.
+ * @param tid Thread identifier.
+ * @param process_name_buffer A buffer where process name (/proc/pid/cmdline content) is read. Passing
+ * as an argument to reduce a stack usage.
+ * @param process_name_buffer_size A size of passed process_name_buffer in bytes.
+ */
+static void ndcrash_write_process_and_thread_info(
+        int outfile,
+        pid_t pid,
+        pid_t tid,
+        char *process_name_buffer,
+        size_t process_name_buffer_size) {
+
+    // Buffer used for file path formatting. Max theoretical value is "/proc/2147483647/cmdline"
+    // 25 characters with terminating characters.
+    char proc_file_path[25];
+
+    // Thread name. Strings longer than TASK_COMM_LEN (16) characters are silently truncated.
+    char proc_comm_content[16];
+
+    // Setting first characters for a case when reading is failed.
+    process_name_buffer[0] = proc_file_path[0] = '\0';
+
+    // Reading a process name.
+    if (snprintf(proc_file_path, sizeofa(proc_file_path), "/proc/%d/cmdline", pid) >= 0) {
+        ndcrash_read_file(proc_file_path, process_name_buffer, process_name_buffer_size);
+    }
+
+    // Reading a thread name.
+    if (snprintf(proc_file_path, sizeofa(proc_file_path), "/proc/%d/comm", tid) >= 0) {
+        const ssize_t bytes_read = ndcrash_read_file(proc_file_path, proc_comm_content,
+                                                     sizeofa(proc_comm_content));
+        // comm usually contains newline character on the end. We don't need it.
+        if (bytes_read > 0 && proc_comm_content[bytes_read - 1] == '\n') {
+            proc_comm_content[bytes_read - 1] = '\0';
+        }
+    }
+
+    // Writing to a log and to a file.
+    ndcrash_dump_write_line(
+            outfile,
+            "pid: %d, tid: %d, name: %s  >>> %s <<<",
+            pid,
+            tid,
+            proc_comm_content,
+            process_name_buffer);
+}
+
 void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_code, void *faultaddr,
                          struct ucontext *context) {
+    // A special marker of crash report beginning.
     ndcrash_dump_write_line(outfile, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***");
 
+    // This buffer we use to read data from system properties and to read other data from files.
     char str_buffer[PROP_VALUE_MAX];
 
     {
@@ -118,38 +183,10 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
     ndcrash_dump_write_line(outfile, "ABI: 'x86_64'");
 #endif
 
-    {
-        // Buffer used for file path formatting. Max theoretical value is "/proc/2147483647/cmdline"
-        // 25 characters with terminating characters.
-        char proc_file_path[25];
+    // Writing a line about process and thread. Re-using str_buffer for a process name.
+    ndcrash_write_process_and_thread_info(outfile, pid, tid, str_buffer, sizeofa(str_buffer));
 
-        // Thread name. Strings longer than TASK_COMM_LEN (16) characters are silently truncated.
-        char proc_comm_content[16];
-
-        // Setting first characters for a case when reading is failed.
-        str_buffer[0] = proc_file_path[0] = '\0';
-
-        if (snprintf(proc_file_path, sizeofa(proc_file_path), "/proc/%d/cmdline", pid) >= 0) {
-            ndcrash_read_file(proc_file_path, str_buffer, sizeofa(str_buffer));
-        }
-
-        if (snprintf(proc_file_path, sizeofa(proc_file_path), "/proc/%d/comm", pid) >= 0) {
-            const ssize_t bytes_read = ndcrash_read_file(proc_file_path, proc_comm_content,
-                                                         sizeofa(proc_comm_content));
-            // comm usually contains newline character on the end. We don't need it.
-            if (bytes_read > 0 && proc_comm_content[bytes_read - 1] == '\n') {
-                proc_comm_content[bytes_read - 1] = '\0';
-            }
-        }
-
-        ndcrash_dump_write_line(
-                outfile,
-                "pid: %d, tid: %d, name: %s  >>> %s <<<",
-                pid,
-                tid,
-                str_buffer,
-                proc_comm_content);
-    }
+    // Writing an information about signal.
     {
         if (ndcrash_signal_has_si_addr(signo, si_code)) {
             snprintf(str_buffer, sizeof(str_buffer), "%p", faultaddr);
@@ -229,8 +266,22 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
             ctx->gregs[REG_RIP], ctx->gregs[REG_RBP], ctx->gregs[REG_RSP], ctx->gregs[REG_EFL]);
 #endif
 
-    ndcrash_dump_write_line(outfile, " ");
-    ndcrash_dump_write_line(outfile, "backtrace:");
+    // Writing "backtrace:"
+    ndcrash_write_backtrace_title(outfile);
+}
+
+void ndcrash_dump_other_thread_header(int outfile, pid_t pid, pid_t tid) {
+    // A special marker about next (not crashed) thread data beginning.
+    ndcrash_dump_write_line(outfile, "--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---");
+
+    // Assuming 64 bytes is sufficient for a process name.
+    char process_name_buffer[64];
+
+    // Writing a line about process and thread.
+    ndcrash_write_process_and_thread_info(outfile, pid, tid, process_name_buffer, sizeofa(process_name_buffer));
+
+    // Writing "backtrace:"
+    ndcrash_write_backtrace_title(outfile);
 }
 
 void ndcrash_dump_backtrace_line(

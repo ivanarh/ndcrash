@@ -274,71 +274,96 @@ unw_accessors_t ndcrash_libunwind_accessors = {
         .resume = ndcrash_out_libunwind_resume
 };
 
-void ndcrash_out_unwind_libunwind(int outfile, struct ndcrash_out_message *message) {
-    const unw_addr_space_t addr_space = unw_create_addr_space(&ndcrash_libunwind_accessors, 0);
+void * ndcrash_out_init_libunwind(pid_t pid) {
+    // Initializing a single instance of /proc/pid/maps cache before any thread unwinding.
+    unw_map_cursor_t * const proc_map_cursor = (unw_map_cursor_t *) malloc(sizeof(unw_map_cursor_t));
+    if (unw_map_cursor_create(proc_map_cursor, pid)) { // Returns 0 on success.
+        NDCRASHLOG(ERROR, "libunwind: Call unw_map_cursor_create failed.");
+    }
+    return proc_map_cursor;
+}
+
+void ndcrash_out_deinit_libunwind(void *data) {
+    if (!data) return;
+    unw_map_cursor_t * const proc_map_cursor = (unw_map_cursor_t *) data;
+    unw_map_cursor_destroy(proc_map_cursor);
+    free(data);
+}
+
+void ndcrash_out_unwind_libunwind(int outfile, pid_t tid, struct ucontext *context, void *data) {
+    unw_map_cursor_t * const proc_map_cursor = (unw_map_cursor_t *) data;
+    unw_map_cursor_reset(proc_map_cursor);
+
+    // If context is specified we use a special wrappers around _UPT_accessors in order to access register
+    // values from it. If not we use not wrapped _UPT_accessors as is to obtain registers by ptrace.
+    const unw_addr_space_t addr_space = unw_create_addr_space(
+            context ? &ndcrash_libunwind_accessors : &_UPT_accessors, 0);
+
     if (addr_space) {
-        unw_map_cursor_t proc_map_cursor;
-        if (!unw_map_cursor_create(&proc_map_cursor, message->tid)) {
-            unw_map_set(addr_space, &proc_map_cursor);
+        unw_map_set(addr_space, proc_map_cursor);
 
-            struct ndcrash_out_libunwind_as_arg ndcrash_as_arg;
-            ndcrash_as_arg.upt_info = _UPT_create(message->tid);
-            ndcrash_libunwind_get_context(&message->context, &ndcrash_as_arg.unw_ctx);
-
-            if (ndcrash_as_arg.upt_info) {
-                unw_cursor_t unw_cursor;
-                char unw_function_name[NDCRASH_MAX_FUNCTION_NAME_LENGTH];
-                if (unw_init_remote(&unw_cursor, addr_space, &ndcrash_as_arg) >= 0) {
-                    for (int i = 0; i < NDCRASH_MAX_FRAMES; ++i) {
-                        // Getting function data and name.
-                        unw_word_t regip;
-                        unw_get_reg(&unw_cursor, UNW_REG_IP, &regip);
-                        unw_map_t proc_map_item = {0, 0, 0, 0, "", 0};
-                        unw_map_cursor_reset(&proc_map_cursor);
-
-                        // Looking for a function name.
-                        unw_word_t func_offset;
-                        const bool func_name_found = unw_get_proc_name_by_ip(
-                                addr_space,
-                                regip,
-                                unw_function_name,
-                                sizeofa(unw_function_name),
-                                &func_offset,
-                                &ndcrash_as_arg) >= 0 && unw_function_name[0] != '\0';
-
-                        // Looking for a object (shared library) where a function is located.
-                        bool maps_found = false;
-                        while (unw_map_cursor_get_next(&proc_map_cursor, &proc_map_item) > 0) {
-                            if (regip >= proc_map_item.start && regip < proc_map_item.end) {
-                                maps_found = true;
-                                regip -= proc_map_item.start; // Making relative.
-                                break;
-                            }
-                        }
-
-                        // Writing a backtrace line.
-                        ndcrash_dump_backtrace_line(
-                                outfile,
-                                i,
-                                regip, // Relative if maps is found
-                                maps_found ? proc_map_item.path : NULL,
-                                func_name_found ? unw_function_name : NULL,
-                                func_offset);
-
-                        // Trying to switch to a previous stack frame.
-                        if (unw_step(&unw_cursor) <= 0) break;
-                    }
-                } else {
-                    NDCRASHLOG(ERROR, "libunwind: Failed to initialize a cursor.");
-                }
-                _UPT_destroy(ndcrash_as_arg.upt_info);
-            } else {
-                NDCRASHLOG(ERROR, "libunwind: Failed to create upt.");
-            }
-            unw_map_cursor_destroy(&proc_map_cursor);
+        struct ndcrash_out_libunwind_as_arg ndcrash_as_arg;
+        ndcrash_as_arg.upt_info = _UPT_create(tid);
+        void *unw_arg;
+        // If context is specified it should be filled. Otherwise it will be obtained by upt accessors.
+        if (context) {
+            ndcrash_libunwind_get_context(context, &ndcrash_as_arg.unw_ctx);
+            unw_arg = &ndcrash_as_arg;
         } else {
-            NDCRASHLOG(ERROR, "libunwind: Call unw_map_cursor_create failed.");
+            unw_arg = ndcrash_as_arg.upt_info;
         }
+
+        if (ndcrash_as_arg.upt_info) {
+            unw_cursor_t unw_cursor;
+            char unw_function_name[NDCRASH_MAX_FUNCTION_NAME_LENGTH];
+            if (unw_init_remote(&unw_cursor, addr_space, unw_arg) >= 0) {
+                for (int i = 0; i < NDCRASH_MAX_FRAMES; ++i) {
+                    // Getting function data and name.
+                    unw_word_t regip;
+                    unw_get_reg(&unw_cursor, UNW_REG_IP, &regip);
+                    unw_map_t proc_map_item = {0, 0, 0, 0, "", 0};
+                    unw_map_cursor_reset(proc_map_cursor);
+
+                    // Looking for a function name.
+                    unw_word_t func_offset;
+                    const bool func_name_found = unw_get_proc_name_by_ip(
+                            addr_space,
+                            regip,
+                            unw_function_name,
+                            sizeofa(unw_function_name),
+                            &func_offset,
+                            unw_arg) >= 0 && unw_function_name[0] != '\0';
+
+                    // Looking for a object (shared library) where a function is located.
+                    bool maps_found = false;
+                    while (unw_map_cursor_get_next(proc_map_cursor, &proc_map_item) > 0) {
+                        if (regip >= proc_map_item.start && regip < proc_map_item.end) {
+                            maps_found = true;
+                            regip -= proc_map_item.start; // Making relative.
+                            break;
+                        }
+                    }
+
+                    // Writing a backtrace line.
+                    ndcrash_dump_backtrace_line(
+                            outfile,
+                            i,
+                            regip, // Relative if maps is found
+                            maps_found ? proc_map_item.path : NULL,
+                            func_name_found ? unw_function_name : NULL,
+                            func_offset);
+
+                    // Trying to switch to a previous stack frame.
+                    if (unw_step(&unw_cursor) <= 0) break;
+                }
+            } else {
+                NDCRASHLOG(ERROR, "libunwind: Failed to initialize a cursor.");
+            }
+            _UPT_destroy(ndcrash_as_arg.upt_info);
+        } else {
+            NDCRASHLOG(ERROR, "libunwind: Failed to create upt.");
+        }
+
         // Remove the map from the address space before destroying it.
         // It will be freed in the UnwindMap destructor.
         unw_map_set(addr_space, NULL);

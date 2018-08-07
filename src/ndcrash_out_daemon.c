@@ -21,6 +21,12 @@
 
 struct ndcrash_out_daemon_context {
 
+    /// Pointer to unwinder initialization function.
+    ndcrash_out_unwinder_init_func_ptr unwinder_init;
+
+    /// Pointer to unwinder de-initialization function.
+    ndcrash_out_unwinder_deinit_func_ptr unwinder_deinit;
+
     /// Pointer to unwinding function.
     ndcrash_out_unwind_func_ptr unwind_function;
 
@@ -52,72 +58,126 @@ struct ndcrash_out_daemon_context *ndcrash_out_daemon_context_instance = NULL;
 /// Constant for listening socket backlog argument.
 static const int SOCKET_BACKLOG = 1;
 
-static void ndcrash_out_daemon_do_unwinding(struct ndcrash_out_message *message) {
-    const bool attached = ptrace(PTRACE_ATTACH, message->tid, NULL, NULL) != -1;
-    if (!attached) {
-        NDCRASHLOG(INFO, "Ptrace attach failed to tid: %d errno: %d (%s)", (int) message->tid, errno, strerror(errno));
-        return;
+
+/**
+ * Attaches to specified thread by ptrace. Writes a message to log on error.
+ * @return Flag whether an attaching is successful.
+ */
+static bool ndcrash_out_ptrace_attach(pid_t tid) {
+    // Attaching.
+    if (ptrace(PTRACE_ATTACH, tid, NULL, NULL) == -1) {
+        NDCRASHLOG(INFO, "Ptrace attach failed to tid: %d errno: %d (%s)", (int) tid, errno, strerror(errno));
+        return false;
     }
-    NDCRASHLOG(INFO, "Ptrace attach successful");
-
-    int status = 0;
-    if (waitpid(message->tid, &status, WUNTRACED) < 0) {
-        NDCRASHLOG(INFO,  "Waitpid failed, error: %s (%d)", strerror(errno), errno);
-    } else {
-        //Opening output file
-        int outfile = -1;
-        if (ndcrash_out_daemon_context_instance->log_file) {
-            outfile = ndcrash_dump_create_file(ndcrash_out_daemon_context_instance->log_file);
-        }
-
-        // Writing a crash dump header
-        ndcrash_dump_header(
-                outfile,
-                message->pid,
-                message->tid,
-                message->signo,
-                message->si_code,
-                message->faultaddr,
-                &message->context);
-
-        // Stack unwinding.
-        if (ndcrash_out_daemon_context_instance->unwind_function) {
-            ndcrash_out_daemon_context_instance->unwind_function(outfile, message);
-        }
-
-        // Final line of crash dump.
-        ndcrash_dump_write_line(outfile, " ");
-
-        // Closing output file.
-        if (outfile >= 0) {
-            //Closing file
-            close(outfile);
-
-            // Running successful unwinding callback if it's set.
-            if (ndcrash_out_daemon_context_instance->crash_callback) {
-                ndcrash_out_daemon_context_instance->crash_callback(
-                        ndcrash_out_daemon_context_instance->log_file,
-                        ndcrash_out_daemon_context_instance->callback_arg
-                );
-            }
-        }
-    }
-
-    ptrace(PTRACE_DETACH, message->tid, NULL, NULL);
+    return true;
 }
 
-static void ndcrash_out_daemon_process_client(int clientsock)
-{
-    struct ndcrash_out_message message = { 0, 0 };
+/**
+ * Detaches from specified thread by ptrace. All errors are ignored.
+ */
+static void ndcrash_out_ptrace_detach(pid_t tid) {
+    ptrace(PTRACE_DETACH, tid, NULL, NULL);
+}
+
+/**
+ * Creates and fills a new crash dump.
+ * @param message A message received from a signal handler.
+ */
+static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message) {
+    // Attaching to a crashed thread. If errors has occurred it's fatal, aborting crash report creation.
+    if (!ndcrash_out_ptrace_attach(message->tid)) return;
+
+    // Getting not crashed threads list and attaching to all of them.
+    pid_t tids[64];
+    const size_t tids_size = ndcrash_get_threads(message->pid, tids, sizeofa(tids));
+    for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
+        // Attaching errors for background threads are not fatal, just skipping such threads by
+        // setting tid to 0.
+        if (!ndcrash_out_ptrace_attach(*it)) {
+            *it = 0;
+        }
+    }
+
+    //Opening output file
+    int outfile = -1;
+    if (ndcrash_out_daemon_context_instance->log_file) {
+        outfile = ndcrash_dump_create_file(ndcrash_out_daemon_context_instance->log_file);
+    }
+
+    // Writing a crash dump header
+    ndcrash_dump_header(
+            outfile,
+            message->pid,
+            message->tid,
+            message->signo,
+            message->si_code,
+            message->faultaddr,
+            &message->context);
+
+    // Unwinder initialization, should be done before any thread unwinding.
+    void * const unwinder_data = ndcrash_out_daemon_context_instance->unwinder_init(message->tid);
+
+    // Stack unwinding for a main thread.
+    ndcrash_out_daemon_context_instance->unwind_function(outfile, message->tid, &message->context, unwinder_data);
+
+    // Processing other threads: printing a header and stack trace.
+    for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
+
+        // Skipping threads failed to attach.
+        if (!*it) continue;
+
+        /// Writing other thread header.
+        ndcrash_dump_other_thread_header(outfile, message->pid, *it);
+
+        // Stack unwinding for a secondary thread.
+        ndcrash_out_daemon_context_instance->unwind_function(outfile, *it, NULL, unwinder_data);
+    }
+
+    // Unwinder de-initialization.
+    ndcrash_out_daemon_context_instance->unwinder_deinit(unwinder_data);
+
+    // Final line of crash dump.
+    ndcrash_dump_write_line(outfile, " ");
+
+    // Closing output file.
+    if (outfile >= 0) {
+        //Closing file
+        close(outfile);
+
+        // Running successful unwinding callback if it's set.
+        if (ndcrash_out_daemon_context_instance->crash_callback) {
+            ndcrash_out_daemon_context_instance->crash_callback(
+                    ndcrash_out_daemon_context_instance->log_file,
+                    ndcrash_out_daemon_context_instance->callback_arg
+            );
+        }
+    }
+
+    // Detaching from all threads.
+    ndcrash_out_ptrace_detach(message->tid);
+    for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
+        if (!*it) continue;
+        ndcrash_out_ptrace_detach(*it);
+    }
+}
+
+/**
+ * Processes a client request: receives a data from client and creates a crash report.
+ * @param clientsock A socket to communicate with a client.
+ */
+static void ndcrash_out_daemon_process_client(int clientsock) {
+    struct ndcrash_out_message message = {0, 0};
     ssize_t overall_read = 0;
     do {
         fd_set fdset;
         FD_ZERO(&fdset);
         FD_SET(clientsock, &fdset);
         FD_SET(ndcrash_out_daemon_context_instance->interruptor[0], &fdset);
-        const int select_result = select(MAX(clientsock, ndcrash_out_daemon_context_instance->interruptor[0]) + 1, &fdset, NULL, NULL, NULL);
+        const int select_result = select(
+                MAX(clientsock, ndcrash_out_daemon_context_instance->interruptor[0]) + 1, &fdset,
+                NULL, NULL, NULL);
         if (select_result < 0) {
-            NDCRASHLOG(ERROR,"Select on recv error: %s (%d)", strerror(errno), errno);
+            NDCRASHLOG(ERROR, "Select on recv error: %s (%d)", strerror(errno), errno);
             close(clientsock);
             return;
         }
@@ -128,11 +188,11 @@ static void ndcrash_out_daemon_process_client(int clientsock)
         }
         const ssize_t bytes_read = recv(
                 clientsock,
-                (char *)&message + overall_read,
+                (char *) &message + overall_read,
                 sizeof(struct ndcrash_out_message) - overall_read,
                 MSG_NOSIGNAL);
         if (bytes_read < 0) {
-            NDCRASHLOG(ERROR,"Recv error: %s (%d)", strerror(errno), errno);
+            NDCRASHLOG(ERROR, "Recv error: %s (%d)", strerror(errno), errno);
             close(clientsock);
             return;
         }
@@ -141,7 +201,8 @@ static void ndcrash_out_daemon_process_client(int clientsock)
 
     NDCRASHLOG(INFO, "Client info received, pid: %d tid: %d", message.pid, message.tid);
 
-    ndcrash_out_daemon_do_unwinding(&message);
+    // Creating a report.
+    ndcrash_out_daemon_create_report(&message);
 
     //Write 1 byte as a response.
     write(clientsock, "\0", 1);
@@ -149,11 +210,14 @@ static void ndcrash_out_daemon_process_client(int clientsock)
     close(clientsock);
 }
 
-static void * ndcrash_out_daemon_function(void *arg) {
+/**
+ * An entry point to a daemon. This function is passed to pthread as a thread main function.
+ */
+static void *ndcrash_out_daemon_function(void *arg) {
     // Creating socket
     const int listensock = socket(PF_LOCAL, SOCK_STREAM, 0);
     if (listensock < 0) {
-        NDCRASHLOG(ERROR,"Couldn't create socket, error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(ERROR, "Couldn't create socket, error: %s (%d)", strerror(errno), errno);
         return NULL;
     }
 
@@ -164,21 +228,23 @@ static void * ndcrash_out_daemon_function(void *arg) {
     }
 
     // Binding to an address.
-    if (bind(listensock, (struct sockaddr *)&ndcrash_out_daemon_context_instance->socket_address, sizeof(struct sockaddr_un)) < 0) {
-        NDCRASHLOG(ERROR,"Couldn't bind socket, error: %s (%d)", strerror(errno), errno);
+    if (bind(listensock, (struct sockaddr *) &ndcrash_out_daemon_context_instance->socket_address,
+             sizeof(struct sockaddr_un)) < 0) {
+        NDCRASHLOG(ERROR, "Couldn't bind socket, error: %s (%d)", strerror(errno), errno);
         return NULL;
     }
 
     // Listening
     if (listen(listensock, SOCKET_BACKLOG) < 0) {
-        NDCRASHLOG(ERROR,"Couldn't listen socket, error: %s (%d)", strerror(errno), errno);
+        NDCRASHLOG(ERROR, "Couldn't listen socket, error: %s (%d)", strerror(errno), errno);
         return NULL;
     }
 
     NDCRASHLOG(INFO, "Daemon is successfuly started, accepting connections...");
 
     if (ndcrash_out_daemon_context_instance->start_callback) {
-        ndcrash_out_daemon_context_instance->start_callback(ndcrash_out_daemon_context_instance->callback_arg);
+        ndcrash_out_daemon_context_instance->start_callback(
+                ndcrash_out_daemon_context_instance->callback_arg);
     }
 
     // Accepting connections in a cycle.
@@ -187,9 +253,11 @@ static void * ndcrash_out_daemon_function(void *arg) {
         FD_ZERO(&fdset);
         FD_SET(listensock, &fdset);
         FD_SET(ndcrash_out_daemon_context_instance->interruptor[0], &fdset);
-        const int select_result = select(MAX(listensock, ndcrash_out_daemon_context_instance->interruptor[0]) + 1, &fdset, NULL, NULL, NULL);
+        const int select_result = select(
+                MAX(listensock, ndcrash_out_daemon_context_instance->interruptor[0]) + 1, &fdset,
+                NULL, NULL, NULL);
         if (select_result < 0) {
-            NDCRASHLOG(ERROR,"Select on accept error: %s (%d)", strerror(errno), errno);
+            NDCRASHLOG(ERROR, "Select on accept error: %s (%d)", strerror(errno), errno);
             break;
         }
         if (FD_ISSET(ndcrash_out_daemon_context_instance->interruptor[0], &fdset)) {
@@ -198,11 +266,11 @@ static void * ndcrash_out_daemon_function(void *arg) {
         }
 
         struct sockaddr_storage ss;
-        struct sockaddr *addrp = (struct sockaddr *)&ss;
+        struct sockaddr *addrp = (struct sockaddr *) &ss;
         socklen_t alen = sizeof(ss);
         int clientsock = accept(listensock, addrp, &alen);
         if (clientsock == -1) {
-            NDCRASHLOG(ERROR,"Accept failed, error: %s (%d)", strerror(errno), errno);
+            NDCRASHLOG(ERROR, "Accept failed, error: %s (%d)", strerror(errno), errno);
             continue;
         }
 
@@ -213,7 +281,8 @@ static void * ndcrash_out_daemon_function(void *arg) {
     close(listensock);
 
     if (ndcrash_out_daemon_context_instance->stop_callback) {
-        ndcrash_out_daemon_context_instance->stop_callback(ndcrash_out_daemon_context_instance->callback_arg);
+        ndcrash_out_daemon_context_instance->stop_callback(
+                ndcrash_out_daemon_context_instance->callback_arg);
     }
 
     return NULL;
@@ -238,7 +307,8 @@ enum ndcrash_error ndcrash_out_start_daemon(
     }
 
     // Creating a new struct instance.
-    ndcrash_out_daemon_context_instance = (struct ndcrash_out_daemon_context *) malloc(sizeof(struct ndcrash_out_daemon_context));
+    ndcrash_out_daemon_context_instance = (struct ndcrash_out_daemon_context *) malloc(
+            sizeof(struct ndcrash_out_daemon_context));
     memset(ndcrash_out_daemon_context_instance, 0, sizeof(struct ndcrash_out_daemon_context));
     ndcrash_out_daemon_context_instance->start_callback = start_callback;
     ndcrash_out_daemon_context_instance->crash_callback = crash_callback;
@@ -252,16 +322,22 @@ enum ndcrash_error ndcrash_out_start_daemon(
     switch (unwinder) {
 #ifdef ENABLE_LIBCORKSCREW
         case ndcrash_unwinder_libcorkscrew:
+            ndcrash_out_daemon_context_instance->unwinder_init = &ndcrash_out_init_libcorkscrew;
+            ndcrash_out_daemon_context_instance->unwinder_deinit = &ndcrash_out_deinit_libcorkscrew;
             ndcrash_out_daemon_context_instance->unwind_function = &ndcrash_out_unwind_libcorkscrew;
             break;
 #endif
 #ifdef ENABLE_LIBUNWIND
         case ndcrash_unwinder_libunwind:
+            ndcrash_out_daemon_context_instance->unwinder_init = &ndcrash_out_init_libunwind;
+            ndcrash_out_daemon_context_instance->unwinder_deinit = &ndcrash_out_deinit_libunwind;
             ndcrash_out_daemon_context_instance->unwind_function = &ndcrash_out_unwind_libunwind;
             break;
 #endif
 #ifdef ENABLE_LIBUNWINDSTACK
         case ndcrash_unwinder_libunwindstack:
+            ndcrash_out_daemon_context_instance->unwinder_init = &ndcrash_out_init_libunwindstack;
+            ndcrash_out_daemon_context_instance->unwinder_deinit = &ndcrash_out_deinit_libunwindstack;
             ndcrash_out_daemon_context_instance->unwind_function = &ndcrash_out_unwind_libunwindstack;
             break;
 #endif
@@ -285,14 +361,16 @@ enum ndcrash_error ndcrash_out_start_daemon(
 
     // Creating interruption pipes.
     if (pipe(ndcrash_out_daemon_context_instance->interruptor) < 0 ||
-            !ndcrash_set_nonblock(ndcrash_out_daemon_context_instance->interruptor[0] ||
-            !ndcrash_set_nonblock(ndcrash_out_daemon_context_instance->interruptor[1]))) {
+        !ndcrash_set_nonblock(ndcrash_out_daemon_context_instance->interruptor[0] ||
+                              !ndcrash_set_nonblock(
+                                      ndcrash_out_daemon_context_instance->interruptor[1]))) {
         ndcrash_out_stop_daemon();
         return ndcrash_error_pipe;
     }
 
     // Creating a daemon thread.
-    const int res = pthread_create(&ndcrash_out_daemon_context_instance->daemon_thread, NULL, ndcrash_out_daemon_function, NULL);
+    const int res = pthread_create(&ndcrash_out_daemon_context_instance->daemon_thread, NULL,
+                                   ndcrash_out_daemon_function, NULL);
     if (res) {
         return ndcrash_error_thread;
     }
@@ -304,7 +382,7 @@ bool ndcrash_out_stop_daemon() {
     if (!ndcrash_out_daemon_context_instance) return false;
     if (ndcrash_out_daemon_context_instance->daemon_thread) {
         // Writing to pipe in order to interrupt select.
-        if (write(ndcrash_out_daemon_context_instance->interruptor[1], (void *)"\0", 1) < 0) {
+        if (write(ndcrash_out_daemon_context_instance->interruptor[1], (void *) "\0", 1) < 0) {
             return false;
         }
         pthread_join(ndcrash_out_daemon_context_instance->daemon_thread, NULL);
@@ -319,7 +397,7 @@ bool ndcrash_out_stop_daemon() {
     return true;
 }
 
-void * ndcrash_out_get_daemon_callbacks_arg() {
+void *ndcrash_out_get_daemon_callbacks_arg() {
     if (!ndcrash_out_daemon_context_instance) return NULL;
     return ndcrash_out_daemon_context_instance->callback_arg;
 }

@@ -26,7 +26,7 @@ int ndcrash_dump_create_file(const char *path);
 void ndcrash_dump_write_line(int fd, const char *format, ...);
 
 /**
- * Write a crash report header to a file and to log.
+ * Write a crash report header to a file and to log. Contains an information about crashed thread.
  * @param outfile Output file descriptor for a crash report.
  * @param pid Crashed process identifier.
  * @param tid Crashed thread identifier.
@@ -37,6 +37,14 @@ void ndcrash_dump_write_line(int fd, const char *format, ...);
  */
 void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_code, void *faultaddr,
                          struct ucontext *context);
+
+/**
+ * Write an other thread info (which is not crashed) to a file and to a log.
+ * @param outfile Output file descriptor for a crash report.
+ * @param pid Process identifier.
+ * @param tid Thread identifier.
+ */
+void ndcrash_dump_other_thread_header(int outfile, pid_t pid, pid_t tid);
 
 /**
  * Write a full line of backtrace to a crash report. Full means that we have all data including

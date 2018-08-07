@@ -39,7 +39,7 @@ void ndcrash_in_unwind_libcorkscrew(int outfile, struct ucontext *context) {
     const ssize_t frame_count = unwind_backtrace_signal_arch(NULL, context, map_info, frames, 0, LIBCORKSCREW_IN_MAX_FRAMES);
 
     //Getting symbols information.
-    backtrace_symbol_t backtrace_symbols[LIBCORKSCREW_IN_MAX_FRAMES] = { { 0, 0, NULL, NULL, NULL } };
+    backtrace_symbol_t backtrace_symbols[LIBCORKSCREW_IN_MAX_FRAMES] = { { 0, 0, NULL, NULL } };
     get_backtrace_symbols(frames, (size_t)frame_count, backtrace_symbols);
 
     ndcrash_common_unwind_libcorkscrew(outfile, backtrace_symbols, frame_count);
@@ -52,27 +52,46 @@ void ndcrash_in_unwind_libcorkscrew(int outfile, struct ucontext *context) {
 
 #ifdef ENABLE_OUTOFPROCESS
 
-void ndcrash_out_unwind_libcorkscrew(int outfile, struct ndcrash_out_message *message) {
-    ptrace_context_t *ptrace_context = load_ptrace_context(message->tid);
+void * ndcrash_out_init_libcorkscrew(pid_t pid) {
+    return load_ptrace_context(pid);
+}
+
+void ndcrash_out_deinit_libcorkscrew(void *data) {
+    free_ptrace_context((ptrace_context_t *) data);
+}
+
+void ndcrash_out_unwind_libcorkscrew(int outfile, pid_t tid, struct ucontext *context, void *data) {
+    ptrace_context_t * const ptrace_context = (ptrace_context_t *) data;
     backtrace_frame_t frames[NDCRASH_MAX_FRAMES] = { { 0, 0, 0 } };
 
     // Collecting backtrace
-    const ssize_t frame_count = unwind_backtrace_ptrace_context_arch(
-            message->tid,
-            (void *)&message->context,
-            ptrace_context,
-            frames,
-            0,
-            NDCRASH_MAX_FRAMES);
+    ssize_t frame_count;
+    if (context) {
+        frame_count = unwind_backtrace_ptrace_context_arch(
+                tid,
+                context,
+                ptrace_context,
+                frames,
+                0,
+                NDCRASH_MAX_FRAMES);
+    } else {
+        frame_count = unwind_backtrace_ptrace_arch(
+                tid,
+                ptrace_context,
+                frames,
+                0,
+                NDCRASH_MAX_FRAMES);
+    }
 
-    //Getting symbols information.
-    backtrace_symbol_t backtrace_symbols[NDCRASH_MAX_FRAMES] = { { 0, 0, NULL, NULL, NULL } };
+    // Getting symbols information.
+    backtrace_symbol_t backtrace_symbols[NDCRASH_MAX_FRAMES] = { { 0, 0, NULL, NULL } };
     get_backtrace_symbols_ptrace(ptrace_context, frames, (size_t)frame_count, backtrace_symbols);
 
+    // Running common unwinding function.
     ndcrash_common_unwind_libcorkscrew(outfile, backtrace_symbols, frame_count);
 
+    // Freeing memory.
     free_backtrace_symbols(backtrace_symbols, (size_t)frame_count);
-    free_ptrace_context(ptrace_context);
 }
 
 #endif //ENABLE_OUTOFPROCESS

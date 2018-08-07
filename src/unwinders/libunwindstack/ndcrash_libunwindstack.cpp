@@ -26,15 +26,12 @@ using namespace unwindstack;
  */
 static inline void ndcrash_common_unwind_libunwindstack(
         int outfile,
-        struct ucontext *context,
+        const std::unique_ptr<Regs> &regs,
         Maps &maps,
         const std::shared_ptr<Memory> &memory,
         bool withDebugData) {
     // String for function name.
     std::string unw_function_name;
-
-    // Initializing registers value from ucontext.
-    const std::unique_ptr<Regs> regs(Regs::CreateFromUcontext(Regs::CurrentArch(), context));
 
     for (size_t frame_num = 0; frame_num < NDCRASH_MAX_FRAMES; frame_num++) {
         // Looking for a map info item for pc on this unwinding step.
@@ -117,22 +114,41 @@ void ndcrash_in_unwind_libunwindstack(int outfile, struct ucontext *context) {
     const std::shared_ptr<Memory> memory(new MemoryLocal);
     // GNU debug symbols usage is disabled, it's quite expensive and unwinding may fail because
     // in signal handler we have a very limited stack size.
-    ndcrash_common_unwind_libunwindstack(outfile, context, maps, memory, false);
+    ndcrash_common_unwind_libunwindstack(
+            outfile,
+            std::unique_ptr<Regs>(Regs::CreateFromUcontext(Regs::CurrentArch(), context)),
+            maps,
+            memory,
+            false);
 }
 
 #endif //ENABLE_INPROCESS
 
 #ifdef ENABLE_OUTOFPROCESS
 
-void ndcrash_out_unwind_libunwindstack(int outfile, struct ndcrash_out_message *message) {
-    RemoteMaps maps(message->tid);
-    if (!maps.Parse()) {
+void * ndcrash_out_init_libunwindstack(pid_t pid) {
+    // Using RemoteMaps instance as an opaque data.
+    RemoteMaps * const maps = new RemoteMaps(pid);
+    if (!maps->Parse()) {
         NDCRASHLOG(ERROR, "libunwindstack: failed to parse remote /proc/pid/maps.");
-        return;
     }
-    // Unwinding stack.
-    const std::shared_ptr<Memory> memory(new MemoryRemote(message->tid));
-    ndcrash_common_unwind_libunwindstack(outfile, &message->context, maps, memory, true);
+    return maps;
+}
+
+void ndcrash_out_deinit_libunwindstack(void *data) {
+    delete static_cast<RemoteMaps *>(data);
+}
+
+void ndcrash_out_unwind_libunwindstack(int outfile, pid_t tid, struct ucontext *context, void *data) {
+    RemoteMaps * const maps = static_cast<RemoteMaps *>(data);
+    const std::shared_ptr<Memory> memory(new MemoryRemote(tid));
+    std::unique_ptr<Regs> regs;
+    if (context) {
+        regs.reset(Regs::CreateFromUcontext(Regs::CurrentArch(), context));
+    } else {
+        regs.reset(Regs::RemoteGet(tid));
+    }
+    ndcrash_common_unwind_libunwindstack(outfile, regs, *maps, memory, true);
 }
 
 #endif //ENABLE_OUTOFPROCESS
