@@ -147,6 +147,10 @@ void ndcrash_out_unwind_libunwindstack(int outfile, pid_t tid, struct ucontext *
         regs.reset(Regs::CreateFromUcontext(Regs::CurrentArch(), context));
     } else {
         regs.reset(Regs::RemoteGet(tid));
+        if (!regs) {
+            NDCRASHLOG(ERROR, "libunwindstack: Couldn't get registers by ptrace for tid: %d", (int) tid);
+            return;
+        }
     }
     ndcrash_common_unwind_libunwindstack(outfile, regs, *maps, memory, true);
 }
