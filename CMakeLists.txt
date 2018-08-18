@@ -17,6 +17,10 @@ if (${ENABLE_OUTOFPROCESS})
     add_definitions(-DENABLE_OUTOFPROCESS)
 endif()
 
+if (${ENABLE_OUTOFPROCESS_ALL_THREADS})
+    add_definitions(-DENABLE_OUTOFPROCESS_ALL_THREADS)
+endif()
+
 if (${ENABLE_LIBCORKSCREW})
     if (${CMAKE_SYSTEM_PROCESSOR} MATCHES arm OR ${CMAKE_SYSTEM_PROCESSOR} MATCHES i686)
         message(STATUS "Unwinder enabled: libcorkscrew")

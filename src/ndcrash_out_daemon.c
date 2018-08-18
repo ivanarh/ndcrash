@@ -88,6 +88,7 @@ static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
     if (!ndcrash_out_ptrace_attach(message->tid)) return;
 
     // Getting not crashed threads list and attaching to all of them.
+#ifdef ENABLE_OUTOFPROCESS_ALL_THREADS
     pid_t tids[64];
     const size_t tids_size = ndcrash_get_threads(message->pid, tids, sizeofa(tids));
     for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
@@ -97,6 +98,7 @@ static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
             *it = 0;
         }
     }
+#endif //ENABLE_OUTOFPROCESS_ALL_THREADS
 
     //Opening output file
     int outfile = -1;
@@ -120,6 +122,7 @@ static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
     // Stack unwinding for a main thread.
     ndcrash_out_daemon_context_instance->unwind_function(outfile, message->tid, &message->context, unwinder_data);
 
+#ifdef ENABLE_OUTOFPROCESS_ALL_THREADS
     // Processing other threads: printing a header and stack trace.
     for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
 
@@ -132,6 +135,7 @@ static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
         // Stack unwinding for a secondary thread.
         ndcrash_out_daemon_context_instance->unwind_function(outfile, *it, NULL, unwinder_data);
     }
+#endif //ENABLE_OUTOFPROCESS_ALL_THREADS
 
     // Unwinder de-initialization.
     ndcrash_out_daemon_context_instance->unwinder_deinit(unwinder_data);
@@ -155,10 +159,12 @@ static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
 
     // Detaching from all threads.
     ndcrash_out_ptrace_detach(message->tid);
+#ifdef ENABLE_OUTOFPROCESS_ALL_THREADS
     for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
         if (!*it) continue;
         ndcrash_out_ptrace_detach(*it);
     }
+#endif //ENABLE_OUTOFPROCESS_ALL_THREADS
 }
 
 /**
