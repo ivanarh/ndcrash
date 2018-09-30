@@ -11,6 +11,8 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/system_properties.h>
+#include <sys/ptrace.h>
+#include <linux/elf.h>
 
 #if __LP64__
 #define PRIPTR "016" PRIxPTR
@@ -156,6 +158,37 @@ static void ndcrash_write_process_and_thread_info(
             process_name_buffer);
 }
 
+/**
+ * Writes a signal information line to a crash report.
+ * @param outfile Output file descriptor for a crash report.
+ * @param signo Number of signal that was caught on crash.
+ * @param si_code Code of signal that was caught on crash (from siginfo structure).
+ * @param faultaddr Optional fault address (from siginfo structure).
+ * @param str_buffer A buffer where a fault address is written. Passing as an argument to reduce a stack usage.
+ * @param str_buffer_size A size of passed process_name_buffer in bytes.
+ */
+static inline void ndcrash_dump_signal_info(
+        int outfile,
+        int signo,
+        int si_code,
+        void *faultaddr,
+        char *str_buffer,
+        size_t str_buffer_size) {
+    if (ndcrash_signal_has_si_addr(signo, si_code)) {
+        snprintf(str_buffer, str_buffer_size, "%p", faultaddr);
+    } else {
+        snprintf(str_buffer, str_buffer_size, "--------");
+    }
+    ndcrash_dump_write_line(
+            outfile,
+            "signal %d (%s), code %d (%s), fault addr %s",
+            signo,
+            ndcrash_get_signame(signo),
+            si_code,
+            ndcrash_get_sigcode(signo, si_code),
+            str_buffer);
+}
+
 void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_code, void *faultaddr,
                          struct ucontext *context) {
     // A special marker of crash report beginning.
@@ -187,21 +220,7 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
     ndcrash_write_process_and_thread_info(outfile, pid, tid, str_buffer, sizeofa(str_buffer));
 
     // Writing an information about signal.
-    {
-        if (ndcrash_signal_has_si_addr(signo, si_code)) {
-            snprintf(str_buffer, sizeof(str_buffer), "%p", faultaddr);
-        } else {
-            snprintf(str_buffer, sizeof(str_buffer), "--------");
-        }
-        ndcrash_dump_write_line(
-                outfile,
-                "signal %d (%s), code %d (%s), fault addr %s",
-                signo,
-                ndcrash_get_signame(signo),
-                si_code,
-                ndcrash_get_sigcode(signo, si_code),
-                str_buffer);
-    }
+    ndcrash_dump_signal_info(outfile, signo, si_code, faultaddr, str_buffer, sizeofa(str_buffer));
 
     // Writing registers to a report.
     const mcontext_t *const ctx = &context->uc_mcontext;
@@ -270,6 +289,99 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
     ndcrash_write_backtrace_title(outfile);
 }
 
+/**
+ * Obtains other thread registers by ptrace and dumps them to a report.
+ * @param outfile Output file for a report.
+ * @param tid Thread identifier which registers to dump.
+ */
+static inline void dump_other_thread_registers_by_ptrace(int outfile, pid_t tid) {
+#if defined(__aarch64__)
+    // For arm64 modern PTRACE_GETREGSET request should be executed.
+    struct user_pt_regs r;
+    struct iovec io;
+    io.iov_base = &r;
+    io.iov_len = sizeof(r);
+    if (ptrace(PTRACE_GETREGSET, tid, (void *)NT_PRSTATUS, &io) == -1) {
+        goto error;
+    }
+#else
+    // For other architectures PTRACE_GETREGS is sufficient.
+#if defined(__x86_64__)
+    struct user_regs_struct r;
+#else
+    struct pt_regs r;
+#endif
+    if (ptrace(PTRACE_GETREGS, tid, 0, &r) == -1) {
+        goto error;
+    }
+#endif
+
+#if defined(__arm__)
+    ndcrash_dump_write_line(outfile, "    r0 %08x  r1 %08x  r2 %08x  r3 %08x",
+            (uint32_t)r.ARM_r0, (uint32_t)r.ARM_r1, (uint32_t)r.ARM_r2, (uint32_t)r.ARM_r3);
+    ndcrash_dump_write_line(outfile, "    r4 %08x  r5 %08x  r6 %08x  r7 %08x",
+            (uint32_t)r.ARM_r4, (uint32_t)r.ARM_r5, (uint32_t)r.ARM_r6, (uint32_t)r.ARM_r7);
+    ndcrash_dump_write_line(outfile, "    r8 %08x  r9 %08x  sl %08x  fp %08x",
+            (uint32_t)r.ARM_r8, (uint32_t)r.ARM_r9, (uint32_t)r.ARM_r10, (uint32_t)r.ARM_fp);
+    ndcrash_dump_write_line(outfile, "    ip %08x  sp %08x  lr %08x  pc %08x  cpsr %08x",
+            (uint32_t)r.ARM_ip, (uint32_t)r.ARM_sp, (uint32_t)r.ARM_lr, (uint32_t)r.ARM_pc, (uint32_t)r.ARM_cpsr);
+#elif defined(__aarch64__)
+    for (int i = 0; i < 28; i += 4) {
+        ndcrash_dump_write_line(
+                outfile,
+                "    x%-2d  %016llx  x%-2d  %016llx  x%-2d  %016llx  x%-2d  %016llx",
+                i, r.regs[i],
+                i+1, r.regs[i+1],
+                i+2, r.regs[i+2],
+                i+3, r.regs[i+3]);
+    }
+    ndcrash_dump_write_line(
+            outfile,
+            "    x28  %016llx  x29  %016llx  x30  %016llx",
+            r.regs[28],
+            r.regs[29],
+            r.regs[30]);
+    ndcrash_dump_write_line(
+            outfile,
+            "    sp   %016llx  pc   %016llx  pstate %016llx",
+            r.sp,
+            r.pc,
+            r.pstate);
+#elif defined(__i386__)
+    ndcrash_dump_write_line(outfile, "    eax %08lx  ebx %08lx  ecx %08lx  edx %08lx",
+            r.eax, r.ebx, r.ecx, r.edx);
+    ndcrash_dump_write_line(outfile, "    esi %08lx  edi %08lx",
+            r.esi, r.edi);
+    ndcrash_dump_write_line(outfile, "    xcs %08x  xds %08x  xes %08x  xfs %08x  xss %08x",
+            r.xcs, r.xds, r.xes, r.xfs, r.xss);
+    ndcrash_dump_write_line(outfile, "    eip %08lx  ebp %08lx  esp %08lx  flags %08lx",
+            r.eip, r.ebp, r.esp, r.eflags);
+#elif defined(__x86_64__)
+    ndcrash_dump_write_line(
+            outfile, "    rax %016lx  rbx %016lx  rcx %016lx  rdx %016lx",
+            r.rax, r.rbx, r.rcx, r.rdx);
+    ndcrash_dump_write_line(
+            outfile, "    rsi %016lx  rdi %016lx",
+            r.rsi, r.rdi);
+    ndcrash_dump_write_line(
+            outfile, "    r8  %016lx  r9  %016lx  r10 %016lx  r11 %016lx",
+            r.r8, r.r9, r.r10, r.r11);
+    ndcrash_dump_write_line(
+            outfile, "    r12 %016lx  r13 %016lx  r14 %016lx  r15 %016lx",
+            r.r12, r.r13, r.r14, r.r15);
+    ndcrash_dump_write_line(
+            outfile, "    cs  %016lx  ss  %016lx",
+            r.cs, r.ss);
+    ndcrash_dump_write_line(
+            outfile, "    rip %016lx  rbp %016lx  rsp %016lx  eflags %016lx",
+            r.rip, r.rbp, r.rsp, r.eflags);
+#endif
+    return;
+    // C-style error processing.
+error:
+    NDCRASHLOG(ERROR, "Couldn't get registers by ptrace: %s (%d)", strerror(errno), errno);
+}
+
 void ndcrash_dump_other_thread_header(int outfile, pid_t pid, pid_t tid) {
     // A special marker about next (not crashed) thread data beginning.
     ndcrash_dump_write_line(outfile, "--- --- --- --- --- --- --- --- --- --- --- --- --- --- --- ---");
@@ -279,6 +391,18 @@ void ndcrash_dump_other_thread_header(int outfile, pid_t pid, pid_t tid) {
 
     // Writing a line about process and thread.
     ndcrash_write_process_and_thread_info(outfile, pid, tid, process_name_buffer, sizeofa(process_name_buffer));
+
+    // Getting signal info by ptrace and writing to a dump.
+    siginfo_t si;
+    memset(&si, 0, sizeof(si));
+    if (ptrace(PTRACE_GETSIGINFO, tid, 0, &si) == -1) {
+        NDCRASHLOG(ERROR, "Couldn't get signal info by ptrace: %s (%d)", strerror(errno), errno);
+        return;
+    }
+    ndcrash_dump_signal_info(outfile, si.si_signo, si.si_code, si.si_addr, process_name_buffer, sizeofa(process_name_buffer));
+
+    // Dumping registers information.
+    dump_other_thread_registers_by_ptrace(outfile, tid);
 
     // Writing "backtrace:"
     ndcrash_write_backtrace_title(outfile);

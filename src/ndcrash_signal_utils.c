@@ -113,16 +113,20 @@ const char *ndcrash_get_sigcode(int signo, int code) {
                 case SEGV_PKUERR:
                     return "SEGV_PKUERR";
 #endif
+#if defined(SEGV_ACCADI)
+                case SEGV_ACCADI:
+                    return "SEGV_ACCADI";
+#endif
+
+#if defined(SEGV_ADIDERR)
+                case SEGV_ADIDERR:
+                    return "SEGV_ADIDERR";
+#endif
+#if defined(SEGV_ADIPERR)
+                case SEGV_ADIPERR:
+                    return "SEGV_ADIPERR";
+#endif
             }
-#if defined(SEGV_PKUERR)
-#if NSIGSEGV != SEGV_PKUERR
-#error "missing SEGV_* si_code"
-#endif
-#elif defined(SEGV_BNDERR)
-#if NSIGSEGV != SEGV_BNDERR
-#error "missing SEGV_* si_code"
-#endif
-#endif
             break;
 #if defined(SYS_SECCOMP)
         case SIGSYS:
