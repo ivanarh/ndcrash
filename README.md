@@ -1,6 +1,6 @@
 # NDCrash #
 
-**NDCrash** is a powerful crash reporting library for Android NDK applications. The author was inspired by PLCrashReporter and Google Breakpad. Note that this library is a new and has a an experimental status.
+**NDCrash** is a powerful crash reporting library for Android NDK applications. The author was inspired by PLCrashReporter and Google Breakpad. Note that this library is new and has a an experimental status.
 
 ## Key features ##
 
@@ -9,6 +9,7 @@
 * [ndk-stack](https://developer.android.com/ndk/guides/ndk-stack.html) compatible human-readable report format. This tool can be easilly used to access line numbers.
 * Supports 2 crash handling modes: *in-process* and *out-of-process*. 
 * Supports 5 different stack unwinders. 
+* *out-of-process* mode supports stack traces collection of all application threads.
 * 32 and 64 bit architectures support (depends on unwinder).
 * Easy-to-use Java wrapper https://github.com/ivanarh/jndcrash
 * Minimum tested Android version is 4.0.3 but theoretically it may work even on Android 2.3.
@@ -18,8 +19,8 @@
 These features are not currently implemented but they are in plans. They are likely to be implemented only for out-of-process mode due to in-process mode restrictions.
 
 * Stack dump.
+* Dump of memory around addresses stored in registers.
 * Memory map dump.
-* Backtraces for all threads (now only crashed thread is included to report).
 
 ## Crash handling modes ##
 
@@ -38,8 +39,8 @@ But it doesn't mean that these stuff couldn't be used in signal handler for cras
 
 #### Stack restrictions ####
 
-Starting from Android 4.4 bionic uses an alternative stack for signal handlers. See [bionic source](https://android.googlesource.com/platform/bionic/+/kitkat-dev/libc/bionic/pthread_create.cpp) and [sigaltstack documentation](http://man7.org/linux/man-pages/man2/sigaltstack.2.html). By default SIGSTKSZ constant value is used (8 kilobytes on 32-bit ARM Platform).
-It's a very useful feature when a crash due to stack overflow happens. However, this stack size could be insufficient because heap allocations are not safe and you are forced to allocate a memory on a stack. For example, libunwind's unw_cursor_t has a huge size (4 kilobytes) and it's a very big trade-off where to allocate a memory for it. Of course, some static buffer may be used but it's not thread safe, signal handlers may execute concurrently for different threads. Libunwind provides a special "memory pool" mechanism for this case.
+Starting from Android 4.4 bionic uses an alternative stack for signal handlers. See [bionic source](https://android.googlesource.com/platform/bionic/+/kitkat-dev/libc/bionic/pthread_create.cpp) and [sigaltstack documentation](http://man7.org/linux/man-pages/man2/sigaltstack.2.html). This stack has fixed size, by default SIGSTKSZ constant value is used (8 kilobytes on 32-bit ARM Platform).
+It's very useful feature when a crash due to stack overflow happens. However, this stack size could be insufficient because heap allocations are not safe and you are forced to allocate a memory on a stack. For example, libunwind's unw_cursor_t has a huge size (4 kilobytes) and it's a very big trade-off where to allocate a memory for it. Of course, some static buffer may be used but it's not thread safe, signal handlers may execute concurrently for different threads. Libunwind provides a special "memory pool" mechanism for this case.
 A workaround for this problem is possible: you can allocate a stack of any size and set it by sigaltstack function. But it should be done for every thread of your application, so some wrapper around pthread is required.
 
 ### Out-of-process mode ###
