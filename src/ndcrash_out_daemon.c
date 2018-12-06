@@ -147,14 +147,6 @@ static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
     if (outfile >= 0) {
         //Closing file
         close(outfile);
-
-        // Running successful unwinding callback if it's set.
-        if (ndcrash_out_daemon_context_instance->crash_callback) {
-            ndcrash_out_daemon_context_instance->crash_callback(
-                    ndcrash_out_daemon_context_instance->log_file,
-                    ndcrash_out_daemon_context_instance->callback_arg
-            );
-        }
     }
 
     // Detaching from all threads.
@@ -165,6 +157,16 @@ static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
         ndcrash_out_ptrace_detach(*it);
     }
 #endif //ENABLE_OUTOFPROCESS_ALL_THREADS
+
+    // Running successful unwinding callback if it's set. We do it after detaching in order to let
+    // user restart an app: callback may perform some long operation, for example, synchronous
+    // networking. Note that outfile is currently closed, we use it only to check if file was created.
+    if (outfile >= 0 && ndcrash_out_daemon_context_instance->crash_callback) {
+        ndcrash_out_daemon_context_instance->crash_callback(
+                ndcrash_out_daemon_context_instance->log_file,
+                ndcrash_out_daemon_context_instance->callback_arg
+        );
+    }
 }
 
 /**
