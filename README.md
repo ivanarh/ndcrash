@@ -179,6 +179,7 @@ For optimization purposes you can turn on or turn off unused modules or library 
 
 - **ENABLE_INPROCESS** Enables in-process mode for a library.
 - **ENABLE_OUTOFPROCESS** Enables in-process mode for a library.
+- **ENABLE_OUTOFPROCESS_ALL_THREADS** Enables all threads unwinding for in-process mode. Ignored if out-process-mode is disabled.
 - **ENABLE_LIBCORKSCREW** Enables "libcorkscrew" unwinder.
 - **ENABLE_LIBUNWIND** Enables "libunwind" unwinder.
 - **ENABLE_LIBUNWINDSTACK** Enables "libunwindstack" unwinder.
@@ -200,6 +201,7 @@ A good place to set this variables is *build.gradle* file of a module where NDK 
                         "-DENABLE_STACKSCAN:BOOL=ON",
                         "-DENABLE_INPROCESS:BOOL=ON",
                         "-DENABLE_OUTOFPROCESS:BOOL=ON"
+                        "-DEENABLE_OUTOFPROCESS_ALL_THREADS:BOOL=ON"
             }
         }
         ndk {
