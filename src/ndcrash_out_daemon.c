@@ -82,10 +82,11 @@ static void ndcrash_out_ptrace_detach(pid_t tid) {
 /**
  * Creates and fills a new crash dump.
  * @param message A message received from a signal handler.
+ * @return Flag if output file for report has been created successfully.
  */
-static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message) {
+static bool ndcrash_out_daemon_create_report(struct ndcrash_out_message *message) {
     // Attaching to a crashed thread. If errors has occurred it's fatal, aborting crash report creation.
-    if (!ndcrash_out_ptrace_attach(message->tid)) return;
+    if (!ndcrash_out_ptrace_attach(message->tid)) return false;
 
     // Getting not crashed threads list and attaching to all of them.
 #ifdef ENABLE_OUTOFPROCESS_ALL_THREADS
@@ -158,15 +159,9 @@ static void ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
     }
 #endif //ENABLE_OUTOFPROCESS_ALL_THREADS
 
-    // Running successful unwinding callback if it's set. We do it after detaching in order to let
-    // user restart an app: callback may perform some long operation, for example, synchronous
-    // networking. Note that outfile is currently closed, we use it only to check if file was created.
-    if (outfile >= 0 && ndcrash_out_daemon_context_instance->crash_callback) {
-        ndcrash_out_daemon_context_instance->crash_callback(
-                ndcrash_out_daemon_context_instance->log_file,
-                ndcrash_out_daemon_context_instance->callback_arg
-        );
-    }
+    // Returning a if output file for report has been created successfully.
+    // Note that outfile is currently closed, we use it only to check if file was created.
+    return outfile >= 0;
 }
 
 /**
@@ -210,12 +205,25 @@ static void ndcrash_out_daemon_process_client(int clientsock) {
     NDCRASHLOG(INFO, "Client info received, pid: %d tid: %d", message.pid, message.tid);
 
     // Creating a report.
-    ndcrash_out_daemon_create_report(&message);
+    const bool report_file_created = ndcrash_out_daemon_create_report(&message);
 
     //Write 1 byte as a response.
     write(clientsock, "\0", 1);
 
+    // Closing a connection.
     close(clientsock);
+
+    // Running successful unwinding callback if it's set. We do it after detaching and disconnecting
+    // from crashing process because at this point it can terminate. A callback may perform some
+    // long operation, for example, synchronous networking and we shouldn't allow any bad UX
+    // with a hang of application. In modern Android service has "a window of several minutes in which
+    // it is still allowed to create and use services" so it won't be a problem.
+    if (report_file_created && ndcrash_out_daemon_context_instance->crash_callback) {
+        ndcrash_out_daemon_context_instance->crash_callback(
+                ndcrash_out_daemon_context_instance->log_file,
+                ndcrash_out_daemon_context_instance->callback_arg
+        );
+    }
 }
 
 /**
