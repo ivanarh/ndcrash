@@ -35,8 +35,12 @@ static inline ssize_t ndcrash_read_file(const char *filename, char *outbuffer, s
     ssize_t overall_read = 0;
     while ((bytes_read = read(fd, outbuffer + overall_read, buffersize - overall_read - 1)) > 0) {
         overall_read += bytes_read;
+        if (overall_read >= buffersize - 1) break;
     }
-    if (bytes_read < 0) return -1;
+    if (bytes_read < 0) {
+        close(fd);
+        return -1;
+    }
     outbuffer[overall_read] = '\0';
     close(fd);
     return overall_read;
