@@ -40,8 +40,11 @@ enum ndcrash_error {
     /// Wrong socket name error.
     ndcrash_error_socket_name,
 
-    /// Wron process error. Happens if we try to initialize an out-of-process daemon from a main process.
+    /// Wrong process error. Happens if we try to initialize an out-of-process daemon from a main process.
     ndcrash_error_wrong_process,
+
+    /// A background out-of-process service has failed to start.
+    ndcrash_error_service_start_failed,
 };
 
 /**
