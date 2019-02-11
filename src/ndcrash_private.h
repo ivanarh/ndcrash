@@ -88,7 +88,7 @@ typedef void (*ndcrash_out_unwinder_deinit_func_ptr)(void *data);
 
 /// This macro allows us to configure maximum function name length. Used for buffer size.
 #ifndef NDCRASH_MAX_FUNCTION_NAME_LENGTH
-#define NDCRASH_MAX_FUNCTION_NAME_LENGTH 64
+#define NDCRASH_MAX_FUNCTION_NAME_LENGTH 96
 #endif
 
 #endif //NDCRASH_PRIVATE_H
