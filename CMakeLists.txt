@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.4.1)
-project(ndcrash)
+project(ndcrash C CXX ASM)
+
+include(GNUInstallDirs)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=implicit-function-declaration -Werror=incompatible-function-pointer-types")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11") #For libunwindstack only.
 
+add_definitions(-D_GNU_SOURCE -D_POSIX_C_SOURCE)
 set(NDCRASH_SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include ${NDCRASH_SOURCE_ROOT})
@@ -99,3 +102,10 @@ endif()
 
 add_library(ndcrash STATIC ${NDCRASH_SOURCES})
 target_link_libraries(ndcrash ${LINK_LIBRARIES})
+
+install(TARGETS ndcrash DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES include/ndcrash.h DESTINATION include/ndcrash)
+
+configure_file("${PROJECT_SOURCE_DIR}/libndcrash.pc.in" "${PROJECT_BINARY_DIR}/libndcrash.pc")
+install(FILES "${PROJECT_BINARY_DIR}/libndcrash.pc" DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+

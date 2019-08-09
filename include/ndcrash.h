@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
 /**
  * Enum representing supported unwinders for stack unwinding.
  */
@@ -45,6 +49,12 @@ enum ndcrash_error {
 
     /// A background out-of-process service has failed to start.
     ndcrash_error_service_start_failed,
+
+    /// Socket communication with out-of-process daemon failed
+    ndcrash_error_service_communication_failed,
+
+    // Cannot create dump file
+    ndcrash_file_inaccessible,
 };
 
 /**
@@ -55,6 +65,14 @@ enum ndcrash_error {
  * @return Initialization result.
  */
 enum ndcrash_error ndcrash_in_init(const enum ndcrash_unwinder unwinder, const char *log_file);
+
+/**
+  * Dump current backtrace into file using unwinder (only libunwindstack supported)
+  * @param unwinder libunwindstack
+  * @param log_file Path to backtrace report file where to write it.
+  * @return generation result
+  */
+enum ndcrash_error ndcrash_in_dump_backtrace(const enum ndcrash_unwinder unwinder, const char *log_file);
 
 /**
  * De-initialize crash reporting library in in-process mode. This call will restore previous signal
@@ -132,6 +150,19 @@ bool ndcrash_out_stop_daemon();
  * Should be called before ndcrash_out_stop_daemon.
  * @return Argument value.
  */
-void * ndcrash_out_get_daemon_callbacks_arg();
+void *ndcrash_out_get_daemon_callbacks_arg();
+
+
+/**
+ * Triggers a manual dump of thread states
+ * @return dump creation result
+ */
+enum ndcrash_error ndcrash_out_trigger_dump();
+
+#ifdef __cplusplus
+#include <string>
+extern "C" void ndcrash_dump_backtrace(std::string &out);
+}
+#endif  // __cplusplus
 
 #endif //NDCRASHDEMO_NDCRASH_H

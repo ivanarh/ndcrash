@@ -4,6 +4,11 @@
 #include <signal.h>
 #include <ucontext.h>
 
+#ifndef ANDROID
+#include <sys/syscall.h>
+#define gettid() syscall(SYS_gettid)
+#endif
+
 /// Array of constants with signal numbers to catch.
 static const int SIGNALS_TO_CATCH[] = {
         SIGABRT,

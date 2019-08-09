@@ -3,7 +3,7 @@
 	url = https://github.com/ivanarh/libunwind-ndk.git
 [submodule "external/libunwindstack-ndk"]
 	path = external/libunwindstack-ndk
-	url = https://github.com/ivanarh/libunwindstack-ndk.git
+	url = https://github.com/dferret/libunwindstack-ndk.git
 [submodule "external/libcorkscrew-ndk"]
 	path = external/libcorkscrew-ndk
 	url = https://github.com/ivanarh/libcorkscrew-ndk.git

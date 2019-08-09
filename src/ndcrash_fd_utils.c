@@ -1,7 +1,6 @@
 #include "ndcrash_fd_utils.h"
 #include "ndcrash_log.h"
 #include <fcntl.h>
-#include <android/log.h>
 #include <string.h>
 #include <errno.h>
 #include <sys/socket.h>

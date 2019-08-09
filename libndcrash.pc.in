@@ -1,0 +1,5 @@
+Name: Ndcrash
+Version: @NDCRASH_VERSION@
+Description: NDCRASH Library
+Libs: -L${CMAKE_INSTALL_FULL_LIBDIR} -lndcrash -lunwindstack -llzma ${EXTRA_LDFLAGS}
+Cflags: -I${CMAKE_INSTALL_PREFIX}/include

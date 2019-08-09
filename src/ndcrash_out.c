@@ -7,14 +7,13 @@
 #include <malloc.h>
 #include <unistd.h>
 #include <asm/unistd.h>
-#include <android/log.h>
 #include <sys/socket.h>
 #include <linux/un.h>
 #include <string.h>
 #include <errno.h>
 #include <linux/prctl.h>
 #include <sys/prctl.h>
-
+#include <sys/types.h>
 #ifdef ENABLE_OUTOFPROCESS
 
 struct ndcrash_out_context {
@@ -33,8 +32,56 @@ struct ndcrash_out_context {
 /// Global instance of out-of-process context.
 struct ndcrash_out_context *ndcrash_out_context_instance = NULL;
 
+/// Send message
+int ndcrash_out_send_message(struct ndcrash_out_message *msg) {
+    // Connecting to service using UNIX domain socket, sending message to it.
+    int r = 0;
+    // Using blocking sockets!
+    const int sock = socket(PF_LOCAL, SOCK_STREAM, 0);
+    if (sock < 0) {
+        NDCRASHLOG(ERROR,"Couldn't create socket, error: %s (%d)", strerror(errno), errno);
+        r = -1;
+    } else {
+        // Connecting.
+        if (connect(
+                sock,
+                (struct sockaddr *) &ndcrash_out_context_instance->socket_address,
+                sizeof(struct sockaddr_un))) {
+            NDCRASHLOG(ERROR, "Couldn't connect socket, error: %s (%d)", strerror(errno), errno);
+            r = -2;
+        } else {
+            // Sending.
+            const ssize_t sent = send(sock, msg, sizeof(*msg), MSG_NOSIGNAL);
+            if (sent < 0) {
+                NDCRASHLOG(ERROR, "Send error: %s (%d)", strerror(errno), errno);
+                r = -3;
+            } else if (sent != sizeof(*msg)) {
+                NDCRASHLOG(
+                        ERROR,
+                        "Error: couldn't send whole message, sent bytes: %d, message size: %d",
+                        (int) sent,
+                        (int) sizeof(*msg));
+                r = -4;
+            } else {
+                NDCRASHLOG(INFO, "Successfuly sent data to crash service.");
+            }
+
+            // Blocking read.
+            char c = 0;
+            if (recv(sock, &c, 1, MSG_NOSIGNAL) < 0) {
+                NDCRASHLOG(ERROR, "Recv error: %s (%d)", strerror(errno), errno);
+                r = -5;
+            }
+        }
+
+        // Closing a socket.
+        close(sock);
+    }
+    return r;
+}
+
 /// Signal handling function for out-of-process architecture.
-void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoid) {
+void ndcrash_out_signal_handler(int signo, siginfo_t *siginfo, void *ctxvoid) {
     // Restoring an old handler to make built-in Android crash mechanism work.
     sigaction(signo, &ndcrash_out_context_instance->old_handlers[signo], NULL);
 
@@ -57,43 +104,8 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
             msg.pid,
             msg.tid);
 
-    // Connecting to service using UNIX domain socket, sending message to it.
-    // Using blocking sockets!
-    const int sock = socket(PF_LOCAL, SOCK_STREAM, 0);
-    if (sock < 0) {
-        NDCRASHLOG(ERROR,"Couldn't create socket, error: %s (%d)", strerror(errno), errno);
-    } else {
-        // Connecting.
-        if (connect(
-                sock,
-                (struct sockaddr *) &ndcrash_out_context_instance->socket_address,
-                sizeof(struct sockaddr_un))) {
-            NDCRASHLOG(ERROR, "Couldn't connect socket, error: %s (%d)", strerror(errno), errno);
-        } else {
-            // Sending.
-            const ssize_t sent = send(sock, &msg, sizeof(msg), MSG_NOSIGNAL);
-            if (sent < 0) {
-                NDCRASHLOG(ERROR, "Send error: %s (%d)", strerror(errno), errno);
-            } else if (sent != sizeof(msg)) {
-                NDCRASHLOG(
-                        ERROR,
-                        "Error: couldn't send whole message, sent bytes: %d, message size: %d",
-                        (int) sent,
-                        (int) sizeof(msg));
-            } else {
-                NDCRASHLOG(INFO, "Successfuly sent data to crash service.");
-            }
-
-            // Blocking read.
-            char c = 0;
-            if (recv(sock, &c, 1, MSG_NOSIGNAL) < 0) {
-                NDCRASHLOG(ERROR, "Recv error: %s (%d)", strerror(errno), errno);
-            }
-        }
-
-        // Closing a socket.
-        close(sock);
-    }
+    // Send message on socket
+    ndcrash_out_send_message(&msg);
 
     // In some cases we need to re-send a signal to run standard bionic handler.
     if (siginfo->si_code <= 0 || signo == SIGABRT) {
@@ -101,6 +113,26 @@ void ndcrash_out_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoi
             _exit(1);
         }
     }
+}
+
+enum ndcrash_error ndcrash_out_trigger_dump() {
+    // Filling message fields.
+    struct ndcrash_out_message msg;
+    msg.pid = getpid();
+    msg.tid = gettid();
+    msg.signo = 0;
+
+    NDCRASHLOG(
+            ERROR,
+            "Dump: pid: %d, tid: %d",
+            msg.pid,
+            msg.tid);
+
+    // Send message on socket
+    if (ndcrash_out_send_message(&msg) < 0) {
+        return ndcrash_error_service_communication_failed;
+    }
+    return ndcrash_ok;
 }
 
 enum ndcrash_error ndcrash_out_init(const char *socket_name) {
