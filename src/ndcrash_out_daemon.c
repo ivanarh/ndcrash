@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/socket.h>
-#include <android/log.h>
 #include <linux/un.h>
 #include <sys/param.h>
 #include <sys/ptrace.h>
@@ -65,6 +64,7 @@ static const int SOCKET_BACKLOG = 1;
  */
 static bool ndcrash_out_ptrace_attach(pid_t tid) {
     // Attaching.
+    //NDCRASHLOG(INFO, "Ptrace attaching to tid:%d", (int) tid);
     if (ptrace(PTRACE_ATTACH, tid, NULL, NULL) == -1) {
         NDCRASHLOG(INFO, "Ptrace attach failed to tid: %d errno: %d (%s)", (int) tid, errno, strerror(errno));
         return false;
@@ -76,6 +76,7 @@ static bool ndcrash_out_ptrace_attach(pid_t tid) {
  * Detaches from specified thread by ptrace. All errors are ignored.
  */
 static void ndcrash_out_ptrace_detach(pid_t tid) {
+    //NDCRASHLOG(INFO, "Ptrace detach from tid:%d", (int) tid);
     ptrace(PTRACE_DETACH, tid, NULL, NULL);
 }
 
@@ -92,10 +93,11 @@ static bool ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
 #ifdef ENABLE_OUTOFPROCESS_ALL_THREADS
     pid_t tids[64];
     const size_t tids_size = ndcrash_get_threads(message->pid, tids, sizeofa(tids));
+    NDCRASHLOG(INFO, "Client threads: %d", (int)tids_size);
     for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
         // Attaching errors for background threads are not fatal, just skipping such threads by
         // setting tid to 0.
-        if (!ndcrash_out_ptrace_attach(*it)) {
+        if ((*it == message->tid) || !ndcrash_out_ptrace_attach(*it)) {
             *it = 0;
         }
     }
@@ -165,6 +167,82 @@ static bool ndcrash_out_daemon_create_report(struct ndcrash_out_message *message
 }
 
 /**
+ * Creates and fills a new state dump.
+ * @param message A message received from a signal handler.
+ * @return Flag if output file for report has been created successfully.
+ */
+static bool ndcrash_out_daemon_create_dump(struct ndcrash_out_message *message) {
+
+    // Getting not crashed threads list and attaching to all of them.
+#ifdef ENABLE_OUTOFPROCESS_ALL_THREADS
+    pid_t tids[64];
+    const size_t tids_size = ndcrash_get_threads(message->pid, tids, sizeofa(tids));
+    NDCRASHLOG(INFO, "Client threads: %d", (int)tids_size);
+    for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
+        // Attaching errors for background threads are not fatal, just skipping such threads by
+        // setting tid to 0.
+        if (!ndcrash_out_ptrace_attach(*it)) {
+            *it = 0;
+        }
+    }
+#endif //ENABLE_OUTOFPROCESS_ALL_THREADS
+
+    //Opening output file
+    int outfile = -1;
+    if (ndcrash_out_daemon_context_instance->log_file) {
+        outfile = ndcrash_dump_create_file(ndcrash_out_daemon_context_instance->log_file);
+    }
+
+    // Writing a crash dump header
+    ndcrash_dump_short_header(
+            outfile,
+            message->pid,
+            message->tid);
+
+    // Unwinder initialization, should be done before any thread unwinding.
+    void * const unwinder_data = ndcrash_out_daemon_context_instance->unwinder_init(message->pid);
+
+#ifdef ENABLE_OUTOFPROCESS_ALL_THREADS
+    // Processing other threads: printing a header and stack trace.
+    for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
+
+        // Skipping threads failed to attach.
+        if (!*it) continue;
+
+        /// Writing other thread header.
+        ndcrash_dump_other_thread_header(outfile, message->pid, *it);
+
+        // Stack unwinding for a secondary thread.
+        ndcrash_out_daemon_context_instance->unwind_function(outfile, *it, NULL, unwinder_data);
+    }
+#endif //ENABLE_OUTOFPROCESS_ALL_THREADS
+
+    // Unwinder de-initialization.
+    ndcrash_out_daemon_context_instance->unwinder_deinit(unwinder_data);
+
+    // Final line of crash dump.
+    ndcrash_dump_write_line(outfile, " ");
+
+    // Closing output file.
+    if (outfile >= 0) {
+        //Closing file
+        close(outfile);
+    }
+
+    // Detaching from all threads.
+#ifdef ENABLE_OUTOFPROCESS_ALL_THREADS
+    for (pid_t *it = tids, *end = tids + tids_size; it != end; ++it) {
+        if (!*it) continue;
+        ndcrash_out_ptrace_detach(*it);
+    }
+#endif //ENABLE_OUTOFPROCESS_ALL_THREADS
+
+    // Returning a if output file for report has been created successfully.
+    // Note that outfile is currently closed, we use it only to check if file was created.
+    return outfile >= 0;
+}
+
+/**
  * Processes a client request: receives a data from client and creates a crash report.
  * @param clientsock A socket to communicate with a client.
  */
@@ -205,8 +283,14 @@ static void ndcrash_out_daemon_process_client(int clientsock) {
     NDCRASHLOG(INFO, "Client info received, pid: %d tid: %d", message.pid, message.tid);
 
     // Creating a report.
-    const bool report_file_created = ndcrash_out_daemon_create_report(&message);
+    bool report_file_created;
+    if (message.signo != 0) {
+        report_file_created = ndcrash_out_daemon_create_report(&message);
+    } else {
+        report_file_created = ndcrash_out_daemon_create_dump(&message);
+    }
 
+    NDCRASHLOG(INFO, "Ack client");
     //Write 1 byte as a response.
     write(clientsock, "\0", 1);
 

@@ -162,8 +162,10 @@ const char *ndcrash_get_sigcode(int signo, int code) {
             return "SI_SIGIO";
         case SI_TKILL:
             return "SI_TKILL";
+#ifdef ANDROID
         case SI_DETHREAD:
             return "SI_DETHREAD";
+#endif
     }
     return "?";
 }

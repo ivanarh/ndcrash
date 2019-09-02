@@ -39,6 +39,14 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
                          struct ucontext *context);
 
 /**
+ * Write a crash report header to a file and to log.
+ * @param outfile Output file descriptor for a crash report.
+ * @param pid process identifier.
+ * @param tid thread identifier.
+ */
+void ndcrash_dump_short_header(int outfile, pid_t pid, pid_t tid);
+
+/**
  * Write an other thread info (which is not crashed) to a file and to a log.
  * @param outfile Output file descriptor for a crash report.
  * @param pid Process identifier.

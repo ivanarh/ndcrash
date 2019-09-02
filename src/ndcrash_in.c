@@ -9,6 +9,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <asm/unistd.h>
 
 #ifdef ENABLE_INPROCESS
@@ -30,7 +31,7 @@ struct ndcrash_in_context {
 struct ndcrash_in_context *ndcrash_in_context_instance = NULL;
 
 /// Main signal handling function.
-void ndcrash_in_signal_handler(int signo, struct siginfo *siginfo, void *ctxvoid) {
+void ndcrash_in_signal_handler(int signo, siginfo_t *siginfo, void *ctxvoid) {
     // Restoring an old handler to make built-in Android crash mechanism work.
     sigaction(signo, &ndcrash_in_context_instance->old_handlers[signo], NULL);
 
@@ -121,6 +122,37 @@ enum ndcrash_error ndcrash_in_init(const enum ndcrash_unwinder unwinder, const c
         }
     }
 
+    return ndcrash_ok;
+}
+
+enum ndcrash_error ndcrash_in_dump_backtrace(const enum ndcrash_unwinder unwinder, const char *log_file) {
+    int outfile = 0;
+    outfile = ndcrash_dump_create_file(log_file);
+    if (outfile <= 0) {
+        return ndcrash_file_inaccessible;
+    }
+
+    // Dumping header of a crash dump.
+    ndcrash_dump_short_header(outfile, getpid(), gettid());
+
+    // Calling unwinding function.
+    switch (unwinder) {
+#ifdef ENABLE_LIBUNWINDSTACK
+        case ndcrash_unwinder_libunwindstack:
+            ndcrash_in_unwind_libunwindstack_local_btdump(outfile);
+            break;
+#endif
+        default:
+            break;
+    }
+
+    // Final new line of crash dump.
+    ndcrash_dump_write_line(outfile, " ");
+
+    // Closing an output file.
+    if (outfile) {
+        close(outfile);
+    }
     return ndcrash_ok;
 }
 

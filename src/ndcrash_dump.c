@@ -6,12 +6,16 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <fcntl.h>
-#include <android/log.h>
 #include <inttypes.h>
 #include <string.h>
 #include <errno.h>
+#ifdef ANDROID
 #include <sys/system_properties.h>
+#else
+#define PROP_VALUE_MAX 256
+#endif
 #include <sys/ptrace.h>
+#include <sys/user.h>
 #include <linux/elf.h>
 
 #if __LP64__
@@ -67,13 +71,20 @@ void ndcrash_dump_write_line(int fd, const char *format, ...) {
     char buffer[NDCRASH_LOG_BUFFER_SIZE];
 
     // First writing to a log as is.
+#ifdef ANDROID
     {
         va_list args;
         va_start(args, format);
         __android_log_vprint(ANDROID_LOG_ERROR, NDCRASH_LOG_TAG, format, args);
         va_end(args);
     }
-
+#else
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    fprintf(stderr, "\n");
+    va_end(args);
+#endif
     // Writing file to log may be disabled.
     if (fd <= 0) return;
 
@@ -193,14 +204,19 @@ static inline void ndcrash_dump_signal_info(
             str_buffer);
 }
 
-void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_code, void *faultaddr,
-                         struct ucontext *context) {
+/**
+ * Writes a process information line to a crash report.
+ * @param outfile Output file descriptor for a crash report.
+ * @param pid main process id
+ * @param tid main thread id
+ * @param str_buffer A buffer where a fault address is written. Passing as an argument to reduce a stack usage.
+ * @param str_buffer_size A size of passed process_name_buffer in bytes.
+ */
+static void ndcrash_dump_process_header(int outfile, pid_t pid, pid_t tid, char *str_buffer, size_t str_buffer_size) {
     // A special marker of crash report beginning.
     ndcrash_dump_write_line(outfile, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***");
 
-    // This buffer we use to read data from system properties and to read other data from files.
-    char str_buffer[PROP_VALUE_MAX];
-
+#ifdef ANDROID
     {
         // Getting system properties and writing them to report.
         __system_property_get("ro.build.fingerprint", str_buffer);
@@ -208,6 +224,7 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
         __system_property_get("ro.revision", str_buffer);
         ndcrash_dump_write_line(outfile, "Revision: '0'");
     }
+#endif
 
     // Writing processor architecture.
 #ifdef __arm__
@@ -221,7 +238,17 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
 #endif
 
     // Writing a line about process and thread. Re-using str_buffer for a process name.
-    ndcrash_write_process_and_thread_info(outfile, pid, tid, str_buffer, sizeofa(str_buffer));
+    ndcrash_write_process_and_thread_info(outfile, pid, tid, str_buffer, str_buffer_size);
+
+}
+
+void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_code, void *faultaddr,
+                         struct ucontext *context) {
+    // This buffer we use to read data from system properties and to read other data from files.
+    char str_buffer[PROP_VALUE_MAX];
+
+    // Write process header
+    ndcrash_dump_process_header(outfile, pid, tid, str_buffer, sizeofa(str_buffer));
 
     // Writing an information about signal.
     ndcrash_dump_signal_info(outfile, signo, si_code, faultaddr, str_buffer, sizeofa(str_buffer));
@@ -291,6 +318,14 @@ void ndcrash_dump_header(int outfile, pid_t pid, pid_t tid, int signo, int si_co
 
     // Writing "backtrace:"
     ndcrash_write_backtrace_title(outfile);
+}
+
+void ndcrash_dump_short_header(int outfile, pid_t pid, pid_t tid) {
+    // This buffer we use to read data from system properties and to read other data from files.
+    char str_buffer[PROP_VALUE_MAX];
+
+    // Write process header
+    ndcrash_dump_process_header(outfile, pid, tid, str_buffer, sizeofa(str_buffer));
 }
 
 /**

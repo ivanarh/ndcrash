@@ -12,6 +12,7 @@ struct ucontext;
 void ndcrash_in_unwind_libcorkscrew(int outfile, struct ucontext *context);
 void ndcrash_in_unwind_libunwind(int outfile, struct ucontext *context);
 void ndcrash_in_unwind_libunwindstack(int outfile, struct ucontext *context);
+void ndcrash_in_unwind_libunwindstack_local_btdump(int outfile);
 void ndcrash_in_unwind_cxxabi(int outfile, struct ucontext *context);
 void ndcrash_in_unwind_stackscan(int outfile, struct ucontext *context);
 

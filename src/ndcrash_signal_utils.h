@@ -27,7 +27,7 @@ const char *ndcrash_get_signame(int sig);
 const char *ndcrash_get_sigcode(int signo, int code);
 
 /// Type for signal handling function pointer. Should be the same as declared in sigaction struct.
-typedef void (* ndcrash_signal_handler_function) (int, struct siginfo *, void *);
+typedef void (* ndcrash_signal_handler_function) (int, siginfo_t *, void *);
 
 /**
  * Registers a passed signal handler saving old handlers to passed array.
