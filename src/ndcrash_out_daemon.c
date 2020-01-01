@@ -65,18 +65,29 @@ static const int SOCKET_BACKLOG = 1;
  */
 static bool ndcrash_out_ptrace_attach(pid_t tid) {
     // Attaching.
-    if (ptrace(PTRACE_ATTACH, tid, NULL, NULL) == -1) {
-        NDCRASHLOG(INFO, "Ptrace attach failed to tid: %d errno: %d (%s)", (int) tid, errno, strerror(errno));
+    if (ptrace(PTRACE_ATTACH, tid, NULL, NULL) < 0) {
+        NDCRASHLOG(ERROR, "Ptrace attach failed to tid: %d errno: %d (%s)", (int) tid, errno, strerror(errno));
+        return false;
+    }
+    int wstatus = 0;
+    if (waitpid(tid, &wstatus, 0) < 0) {
+        NDCRASHLOG(ERROR, "Waitpid failed to tid: %d errno: %d (%s)", (int) tid, errno, strerror(errno));
+        return false;
+    }
+    if (!WIFSTOPPED(wstatus)) {
+        NDCRASHLOG(ERROR, "Thread %d isn't stopped, status: %d", (int) tid, wstatus);
         return false;
     }
     return true;
 }
 
 /**
- * Detaches from specified thread by ptrace. All errors are ignored.
+ * Detaches from specified thread by ptrace. Errors are reported to log.
  */
 static void ndcrash_out_ptrace_detach(pid_t tid) {
-    ptrace(PTRACE_DETACH, tid, NULL, NULL);
+    if (ptrace(PTRACE_DETACH, tid, NULL, NULL) < 0) {
+        NDCRASHLOG(ERROR, "Ptrace detach failed from tid: %d errno: %d (%s)", (int) tid, errno, strerror(errno));
+    }
 }
 
 /**
